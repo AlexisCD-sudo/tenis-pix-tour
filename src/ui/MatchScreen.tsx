@@ -1,0 +1,130 @@
+import { useEffect, useRef, useState } from 'react';
+import { AIController } from '../ai/ai';
+import { Difficulty } from '../ai/difficulty';
+import { audio } from '../audio/audio';
+import { HumanController, InputManager } from '../controls/input';
+import { Match } from '../game/match';
+import { GameRunner, HudState } from '../game/runner';
+import { Settings } from '../game/storage';
+import { PlayerDef } from '../players/roster';
+import { Hud } from './Hud';
+import { useViewport } from './hooks';
+import { PixelButton, PixelText } from './PixelText';
+import { TouchControls } from './TouchControls';
+
+export interface MatchSetup {
+  p0: PlayerDef;
+  p1: PlayerDef;
+  humanIdx: 0 | null;
+  seed: number;
+  firstServer?: 0 | 1;
+}
+
+interface Props {
+  setup: MatchSetup;
+  difficulty: Difficulty;
+  settings: Settings;
+  roundLabel: string;
+  attract?: boolean;
+  onFinish: (m: Match) => void;
+  onQuit: () => void;
+}
+
+export function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false, onFinish, onQuit }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const runnerRef = useRef<GameRunner | null>(null);
+  const inputRef = useRef<InputManager>(new InputManager());
+  const vp = useViewport();
+  const [hud, setHud] = useState<HudState | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [hint, setHint] = useState(true);
+  const touch = !attract && (settings.touch === 'on' || (settings.touch === 'auto' && vp.coarse));
+
+  useEffect(() => {
+    const input = inputRef.current;
+    const human = setup.humanIdx === 0 ? new HumanController(input) : null;
+    const controllers = [human ?? new AIController(setup.seed + 1), new AIController(setup.seed + 2)] as [HumanController | AIController, AIController];
+    const match = new Match(
+      { p0: setup.p0, p1: setup.p1, humanIdx: setup.humanIdx, difficulty, seed: setup.seed, firstServer: setup.firstServer },
+      controllers,
+    );
+    const runner = new GameRunner(canvasRef.current!, match, human ? input : null, human, {
+      assist: settings.assist,
+      attract,
+      onHud: setHud,
+      onEnd: onFinish,
+    });
+    runnerRef.current = runner;
+    input.onPause = () => {
+      const p = !runner.paused;
+      runner.setPaused(p);
+      setPaused(p);
+    };
+    runner.start();
+    const t = window.setTimeout(() => setHint(false), 7000);
+    return () => {
+      window.clearTimeout(t);
+      runner.stop();
+      input.onPause = null;
+      runnerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setup, difficulty, attract]);
+
+  useEffect(() => {
+    runnerRef.current?.setPaused(paused);
+  }, [paused]);
+
+  const togglePause = (): void => {
+    const r = runnerRef.current;
+    if (!r) return;
+    const p = !r.paused;
+    r.setPaused(p);
+    setPaused(p);
+    if (!p) audio.unlock();
+  };
+
+  return (
+    <div className={`stage ${vp.portrait ? 'portrait' : 'landscape'} ${touch ? 'with-touch' : ''}`}>
+      <div className="view">
+        <canvas ref={canvasRef} className="game-canvas" />
+        {!attract && hud ? <Hud hud={hud} ps={vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps} onPause={togglePause} /> : null}
+        {!attract ? (
+          <div className="round-tag">
+            <PixelText text={roundLabel} scale={1} color="#9fb4e8" />
+          </div>
+        ) : null}
+        {hint && !attract && !paused ? (
+          <div className="hint">
+            {touch ? (
+              <>
+                <PixelText text="JOYSTICK: MOURE I APUNTAR" scale={1} color="#ffffff" />
+                <PixelText text="COP/SERVEI · SLICE · TOP · LOB" scale={1} color="#ffe066" />
+              </>
+            ) : (
+              <>
+                <PixelText text="WASD / FLETXES: MOURE I APUNTAR" scale={1} color="#ffffff" />
+                <PixelText text="ESPAI COP/SERVEI  J SLICE  K TOPSPIN  L LOB  SHIFT CÓRRER" scale={1} color="#ffe066" />
+              </>
+            )}
+          </div>
+        ) : null}
+        {paused ? (
+          <div className="overlay pause">
+            <PixelText text="PAUSA" scale={5} color="#ffe066" />
+            <PixelButton label="CONTINUAR" variant="primary" onClick={togglePause} />
+            <PixelButton
+              label="ABANDONAR PARTIT"
+              variant="danger"
+              onClick={() => {
+                runnerRef.current?.stop();
+                onQuit();
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      {touch ? <TouchControls input={inputRef.current} serving={!!hud && hud.humanServing && (hud.phase === 'serve_wait' || hud.phase === 'toss')} ps={vp.ps >= 2 ? 2 : 1} /> : null}
+    </div>
+  );
+}
