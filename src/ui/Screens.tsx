@@ -32,7 +32,7 @@ export function Title({
       <div className="title-block">
         <PixelText text="PIXEL TENNIS" scale={s + 3} color="#d4ff2a" outline="#0b1230" />
         <PixelText text="TOURNAMENT" scale={s + 3} color="#ffffff" outline="#0b1230" />
-        <PixelText text="TORNEIG DE 16 BITS · 6 JUGADORS" scale={Math.max(1, s - 2)} color="#9fb4e8" />
+        <PixelText text="TORNEIG DE 16 BITS · 8 JUGADORS" scale={Math.max(1, s - 2)} color="#9fb4e8" />
       </div>
       <div className="menu-col">
         <PixelButton label="JUGAR TORNEIG" scale={s} variant="primary" onClick={onPlay} sub={`${p.shortName} · ${DIFFICULTY[settings.difficulty].label}`} />
@@ -58,10 +58,10 @@ function Bar({ label, v }: { label: string; v: number }) {
   );
 }
 
-export function PlayerCard({ def, selected, onClick }: { def: PlayerDef; selected?: boolean; onClick?: () => void }) {
+export function PlayerCard({ def, selected, onClick, compact = false }: { def: PlayerDef; selected?: boolean; onClick?: () => void; compact?: boolean }) {
   return (
-    <button className={`pcard ${selected ? 'sel' : ''}`} onClick={onClick}>
-      <SpritePreview def={def} scale={2} />
+    <button className={`pcard ${selected ? 'sel' : ''} ${compact ? 'compact' : ''}`} onClick={onClick}>
+      <SpritePreview def={def} scale={compact ? 1 : 2} />
       <PixelText text={def.shortName} scale={2} color={selected ? '#ffe066' : '#ffffff'} />
       <Bar label="VEL" v={def.stats.speed} />
       <Bar label="POT" v={def.stats.power} />
@@ -73,13 +73,16 @@ export function PlayerCard({ def, selected, onClick }: { def: PlayerDef; selecte
 
 export function PlayerSelect({ settings, onPick, onBack }: { settings: Settings; onPick: (id: string) => void; onBack: () => void }) {
   const [cur, setCur] = useState(settings.playerId);
+  const vp = useViewport();
+  // Amb 8 targetes, en pantalles baixes es fan més compactes perquè hi càpiga tot
+  const compact = vp.h < 860;
   const def = ROSTER.find((r) => r.id === cur)!;
   return (
     <div className="panel-screen">
-      <PixelText text="TRIA EL TEU JUGADOR" scale={3} color="#ffe066" />
+      <PixelText text="TRIA EL TEU JUGADOR" scale={compact ? 2 : 3} color="#ffe066" />
       <div className="pgrid">
         {ROSTER.map((r) => (
-          <PlayerCard key={r.id} def={r} selected={r.id === cur} onClick={() => setCur(r.id)} />
+          <PlayerCard key={r.id} def={r} selected={r.id === cur} compact={compact} onClick={() => setCur(r.id)} />
         ))}
       </div>
       <div className="pinfo">
@@ -88,7 +91,7 @@ export function PlayerSelect({ settings, onPick, onBack }: { settings: Settings;
         <PixelText text={`ESTIL: ${def.style.label.toUpperCase()}`} scale={1} color="#cfe0ff" />
         <PixelText text={`${def.style.lefty ? 'ESQUERRÀ' : 'DESTRE'} · ${def.style.oneHandBackhand ? 'REVÉS A UNA MÀ' : 'REVÉS A DUES MANS'}`} scale={1} color="#cfe0ff" />
       </div>
-      <div className="row">
+      <div className="row sticky-actions">
         <PixelButton label="ENRERE" onClick={onBack} />
         <PixelButton label="CONFIRMAR" variant="primary" onClick={() => onPick(cur)} />
       </div>
@@ -158,7 +161,7 @@ export function RankingScreen({ ranking, onBack }: { ranking: Ranking; onBack: (
   );
 }
 
-function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+export function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <div className="slider">
       <PixelText text={label} scale={2} />
@@ -212,17 +215,19 @@ export function OptionsScreen({ settings, onChange, onBack }: { settings: Settin
   );
 }
 
+export const CONTROL_ROWS: [string, string][] = [
+  ['WASD / FLETXES', 'MOURE I APUNTAR EL COP'],
+  ['ESPAI', 'COP PLA · SERVEI (DUES PULSACIONS)'],
+  ['J', 'SLICE (CAP I BAIX, BOT BAIX)'],
+  ['K', 'TOPSPIN (ARC ALT I BOT FORT)'],
+  ['L', 'LOB (PER SOBRE DEL RIVAL)'],
+  ['SHIFT', 'CÓRRER (GASTA RESISTÈNCIA)'],
+  ['P / ESC', 'PAUSA'],
+  ['RATOLÍ', 'MENÚS'],
+];
+
 export function ControlsScreen({ onBack }: { onBack: () => void }) {
-  const rows: [string, string][] = [
-    ['WASD / FLETXES', 'MOURE I APUNTAR EL COP'],
-    ['ESPAI', 'COP PLA · SERVEI (DUES PULSACIONS)'],
-    ['J', 'SLICE (CAP I BAIX, BOT BAIX)'],
-    ['K', 'TOPSPIN (ARC ALT I BOT FORT)'],
-    ['L', 'LOB (PER SOBRE DEL RIVAL)'],
-    ['SHIFT', 'CÓRRER (GASTA RESISTÈNCIA)'],
-    ['P / ESC', 'PAUSA'],
-    ['RATOLÍ', 'MENÚS'],
-  ];
+  const rows = CONTROL_ROWS;
   return (
     <div className="panel-screen">
       <PixelText text="CONTROLS" scale={4} color="#ffe066" />

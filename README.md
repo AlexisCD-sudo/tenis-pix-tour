@@ -1,6 +1,6 @@
 # Pixel Tennis Tournament 🎾
 
-Videojoc de tennis pixel art de 16 bits: torneig de 6 jugadors, partits al millor de 3 sets,
+Videojoc de tennis pixel art de 16 bits: torneig de 8 jugadors, partits al millor de 3 sets,
 física de pilota pròpia (timestep fix), IA amb tres dificultats, públic i àudio sintetitzat (Web Audio).
 Vite + React + TypeScript + HTML5 Canvas. Un jugador contra la IA, per a ordinador i mòbil.
 
@@ -10,7 +10,7 @@ Vite + React + TypeScript + HTML5 Canvas. Un jugador contra la IA, per a ordinad
 npm install
 npm run dev        # joc en local
 npm run build      # typecheck + build de producció
-npm test           # 21 proves (puntuació, física, torneig, IA)
+npm test           # proves (puntuació, física, torneig, IA)
 ```
 
 ## Controls
@@ -30,11 +30,11 @@ Mòbil: joystick virtual (esquerra), botons de cop i servei (dreta), botó de pa
 |---|---|
 | `engine/` | constants del món, matemàtiques, RNG determinista |
 | `physics/` | pilota (gravetat, arrossegament, Magnus, rebot amb fricció, xarxa) i solucionador de trajectòries |
-| `players/` | plantilla dels 6 tennistes, estadístiques, estils, tipus de cop |
+| `players/` | plantilla dels 8 tennistes, estadístiques, estils, tipus de cop |
 | `scoring/` | puntuació oficial (deuce, avantatge, tie-break, sets) |
 | `ai/` | predicció de la pilota, tria de cop, errors, dificultats |
 | `game/` | partit (regles i fases), bucle de joc, desat |
-| `tournament/` | quadre de 6 jugadors i simulació |
+| `tournament/` | quadre de 8 jugadors (quarts, semis i final) i simulació |
 | `render/` | càmera, pista, sprites, públic (tot procedural, sense emojis) |
 | `audio/` | efectes i música amb Web Audio API |
 | `controls/` | teclat i tàctil |

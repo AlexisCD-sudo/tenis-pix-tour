@@ -15,7 +15,7 @@ export interface Controller {
 }
 
 export type MatchEvent =
-  | { type: 'hit'; player: number; stroke: Stroke; variant: HitKey; power: number; quality: number; x: number; y: number; z: number }
+  | { type: 'hit'; player: number; stroke: Stroke; variant: HitKey; power: number; quality: number; kmh: number; x: number; y: number; z: number }
   | { type: 'bounce'; x: number; y: number; vz: number; speed: number; inBounds: boolean }
   | { type: 'net'; speed: number; cord: boolean }
   | { type: 'toss'; player: number }
@@ -411,6 +411,7 @@ export class Match {
       variant: sw.variant,
       power: res.power,
       quality,
+      kmh: res.kmh,
       x: b.x,
       y: b.y,
       z: b.z,

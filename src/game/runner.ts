@@ -15,9 +15,6 @@ export interface HudState {
   tiebreak: boolean;
   serveStage: 1 | 2;
   phase: Match['phase'];
-  /** Text del jutge (efímer). */
-  banner: string;
-  bannerId: number;
   /** Identificador que canvia cada punt (per a l'animació del marcador). */
   pointId: number;
   /** Jugador que ha guanyat l'últim punt. */
@@ -52,8 +49,6 @@ export class GameRunner {
   private renderer: Renderer;
   private pointId = 0;
   private lastWinner = 0;
-  private banner = '';
-  private bannerId = 0;
   private hudTimer = 0;
   private ended = false;
   private serveSpeed = 0;
@@ -85,7 +80,12 @@ export class GameRunner {
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.input?.detach();
+    this.renderer.dispose();
     if (!this.opts.attract) audio.stopAmbience();
+  }
+
+  setAssist(on: boolean): void {
+    this.renderer.assist = on;
   }
 
   setPaused(p: boolean): void {
@@ -165,8 +165,6 @@ export class GameRunner {
           if (!attract) audio.point();
           break;
         case 'announce':
-          this.banner = e.text;
-          this.bannerId++;
           if (e.speak && !attract) audio.announce(e.text);
           break;
         case 'crowd':
@@ -180,10 +178,12 @@ export class GameRunner {
           break;
       }
     }
-    for (const e of events) {
+    // Velocitat del darrer servei: és la del cop (no la de la pilota al final del fotograma)
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
       if (e.type === 'hit' && e.stroke === 'serve') {
-        const b = this.match.ball;
-        this.serveSpeed = Math.round(Math.hypot(b.vx, b.vy, b.vz) * 3.6);
+        this.serveSpeed = e.kmh;
+        break;
       }
     }
   }
@@ -202,8 +202,6 @@ export class GameRunner {
       tiebreak: s.tiebreak,
       serveStage: m.serveStage,
       phase: m.phase,
-      banner: this.banner,
-      bannerId: this.bannerId,
       pointId: this.pointId,
       lastWinner: this.lastWinner,
       paused: this.paused,

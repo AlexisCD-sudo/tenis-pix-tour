@@ -44,6 +44,36 @@ interface Judge {
 
 type Drawable = { key: number; draw: () => void };
 
+let bgCache: HTMLCanvasElement | null = null;
+let vignetteCache: HTMLCanvasElement | null = null;
+
+function sharedBackground(): HTMLCanvasElement {
+  return (bgCache ??= buildBackground());
+}
+
+/** Vinyeta amb trama Bayer, escrita directament en un ImageData (molt més ràpid que 130.000 fillRect). */
+function sharedVignette(): HTMLCanvasElement {
+  if (vignetteCache) return vignetteCache;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d')!;
+  const img = g.createImageData(W, H);
+  const px32 = new Uint32Array(img.data.buffer);
+  // RGBA little-endian: (a<<24)|(b<<16)|(g<<8)|r  -> rgba(4,8,24,0.42)
+  const color = ((Math.round(0.42 * 255) << 24) | (24 << 16) | (8 << 8) | 4) >>> 0;
+  for (let y = 0; y < H; y++) {
+    const dy = ((y - H / 2) / 190) ** 2;
+    for (let x = 0; x < W; x++) {
+      const d = ((x - W / 2) / 300) ** 2 + dy;
+      const th = 0.55 + (BAYER4[(y & 3) * 4 + (x & 3)] / 16) * 0.5;
+      if (d > th) px32[y * W + x] = color;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return (vignetteCache = c);
+}
+
 export class Renderer {
   private ctx: Ctx;
   private bg: HTMLCanvasElement;
@@ -72,29 +102,51 @@ export class Renderer {
   private umpireArm = 0;
   private flashWhite = 0;
 
+  private scale = 1;
+  private ro: ResizeObserver | null = null;
+
   constructor(private canvas: HTMLCanvasElement) {
     canvas.width = W;
     canvas.height = H;
     this.ctx = canvas.getContext('2d', { alpha: false })!;
     this.ctx.imageSmoothingEnabled = false;
-    this.bg = buildBackground();
-    this.vignette = this.buildVignette();
+    // El fons i la vinyeta no canvien mai: es calculen una sola vegada i es comparteixen.
+    this.bg = sharedBackground();
+    this.vignette = sharedVignette();
+    this.fit();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(() => this.fit());
+      this.ro.observe(canvas);
+    }
   }
 
-  private buildVignette(): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = W;
-    c.height = H;
-    const g = c.getContext('2d')!;
-    g.fillStyle = 'rgba(4,8,24,0.42)';
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const d = ((x - W / 2) / 300) ** 2 + ((y - H / 2) / 190) ** 2;
-        const th = 0.55 + (BAYER4[(y & 3) * 4 + (x & 3)] / 16) * 0.5;
-        if (d > th) g.fillRect(x, y, 1, 1);
-      }
+  /**
+   * Ajusta la resolució interna al DPR: la pantalla lògica segueix sent de 480x270
+   * però es pinta a un múltiple enter (1x..6x) de la mida real en píxels del dispositiu,
+   * de manera que a pantalles retina els píxels es veuen nítids i sense borrosor.
+   */
+  fit(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = this.canvas.clientWidth;
+    if (!cssW) return;
+    const devW = cssW * dpr;
+    // Màxim 6x a l'ordinador i 4x en dispositius tàctils (menys ompliment de píxels)
+    const maxK = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 4 : 6;
+    const k = Math.min(maxK, Math.max(1, Math.ceil(devW / W - 0.02)));
+    if (k !== this.scale || this.canvas.width !== W * k) {
+      this.scale = k;
+      this.canvas.width = W * k; // reinicia l'estat del context
+      this.canvas.height = H * k;
+      this.ctx.imageSmoothingEnabled = false;
     }
-    return c;
+    this.ctx.setTransform(k, 0, 0, k, 0, 0);
+    // Si el buffer és igual o més gran que la pantalla es redueix amb suavitat; si no, píxels durs.
+    this.canvas.style.imageRendering = W * k >= devW ? 'auto' : 'pixelated';
+  }
+
+  dispose(): void {
+    this.ro?.disconnect();
+    this.ro = null;
   }
 
   // ------------------------------------------------------------ esdeveniments

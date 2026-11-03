@@ -8,19 +8,24 @@ interface Props {
   highlightId?: string | null;
 }
 
+/** Mida del quadre en píxels de disseny (l'escala la decideix qui el col·loca). */
+export const BRACKET_W = 740;
+export const BRACKET_H = 392;
+
 const POS: Record<string, { x: number; y: number }> = {
-  QF1: { x: 0, y: 24 },
-  QF2: { x: 0, y: 196 },
-  SF1: { x: 250, y: 0 },
-  SF2: { x: 250, y: 220 },
-  F: { x: 500, y: 110 },
+  QF1: { x: 0, y: 22 },
+  QF2: { x: 0, y: 106 },
+  QF3: { x: 0, y: 226 },
+  QF4: { x: 0, y: 310 },
+  SF1: { x: 250, y: 64 },
+  SF2: { x: 250, y: 268 },
+  F: { x: 500, y: 166 },
 };
 const CW = 210;
 const CH = 64;
 
 function Card({ m, tour, active }: { m: BracketMatch; tour: Tournament; active: boolean }) {
   const lines = [m.a, m.b];
-  const flip = false;
   return (
     <div className={`bcard ${active ? 'active' : ''}`} style={{ left: POS[m.id].x, top: POS[m.id].y, width: CW, height: CH }}>
       {lines.map((id, i) => {
@@ -44,7 +49,7 @@ function Card({ m, tour, active }: { m: BracketMatch; tour: Tournament; active: 
       })}
       {m.sets ? (
         <span className="bscore">
-          <PixelText text={formatSets(m.sets, flip)} scale={1} color="#8fa6d8" />
+          <PixelText text={formatSets(m.sets)} scale={1} color="#8fa6d8" />
         </span>
       ) : null}
     </div>
@@ -67,32 +72,42 @@ export function Bracket({ tour, scale = 1, highlightId }: Props) {
   const done = (id: string): boolean => !!tour.get(id as 'F').winner;
   const lineCol = (id: string): string => (done(id) ? '#ffe066' : '#3f5aa0');
   return (
-    <div className="bracket-wrap" style={{ width: 740 * scale, height: 340 * scale }}>
+    <div className="bracket-wrap" style={{ width: BRACKET_W * scale, height: BRACKET_H * scale }}>
       <div className="bracket" style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-        <svg width="740" height="340" className="blines" shapeRendering="crispEdges">
-          <path d={link('QF1', 'SF1')} stroke={lineCol('QF1')} fill="none" strokeWidth="3" />
-          <path d={link('QF2', 'SF2')} stroke={lineCol('QF2')} fill="none" strokeWidth="3" />
-          <path d={link('SF1', 'F')} stroke={lineCol('SF1')} fill="none" strokeWidth="3" />
-          <path d={link('SF2', 'F')} stroke={lineCol('SF2')} fill="none" strokeWidth="3" />
+        <svg width={BRACKET_W} height={BRACKET_H} className="blines" shapeRendering="crispEdges">
+          {(
+            [
+              ['QF1', 'SF1'],
+              ['QF2', 'SF1'],
+              ['QF3', 'SF2'],
+              ['QF4', 'SF2'],
+              ['SF1', 'F'],
+              ['SF2', 'F'],
+            ] as const
+          ).map(([from, to]) => (
+            <path key={`${from}-${to}`} d={link(from, to)} stroke={lineCol(from)} fill="none" strokeWidth="3" />
+          ))}
         </svg>
-        <div className="bcol-title" style={{ left: 0, top: -2 }}>
-          <PixelText text="QUARTS" scale={1} color="#6f86bd" />
-        </div>
-        <div className="bcol-title" style={{ left: 250, top: -2 }}>
-          <PixelText text="" scale={1} />
-        </div>
+        {(
+          [
+            ['QUARTS', 0],
+            ['SEMIFINALS', 250],
+            ['FINAL', 500],
+          ] as const
+        ).map(([t, x]) => (
+          <div className="bcol-title" key={t} style={{ left: x, top: 2 }}>
+            <PixelText text={t} scale={1} color="#6f86bd" />
+          </div>
+        ))}
         {tour.matches.map((m) => (
           <Card key={m.id} m={m} tour={tour} active={(next?.id === m.id) || highlightId === m.id} />
         ))}
         {tour.champion ? (
-          <div className="bchamp" style={{ left: 500, top: 200, width: CW }}>
+          <div className="bchamp" style={{ left: 500, top: 240, width: CW }}>
             <PixelText text="CAMPIÓ" scale={2} color="#ffe066" />
             <PixelText text={getPlayerDef(tour.champion).name.toUpperCase()} scale={2} color="#ffffff" />
           </div>
         ) : null}
-        <div className="bnote" style={{ left: 0, top: 120 }}>
-          <PixelText text="CAPS DE SÈRIE 1 I 2: DIRECTES A SEMIS" scale={1} color="#6f86bd" />
-        </div>
       </div>
     </div>
   );

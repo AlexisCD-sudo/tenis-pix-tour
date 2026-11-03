@@ -456,7 +456,7 @@ export class AIController implements Controller {
     }
     const vmax = p.maxSpeed(false);
     // Velocitat desitjada: frena en acostar-se
-    const want = Math.min(vmax * 1.25, (d / 0.2) * urgency + (urgency >= 1 ? 0 : 0));
+    const want = Math.min(vmax * 1.25, (d / 0.2) * urgency);
     const k = want / (d * vmax);
     intent.mx = clamp(dx * k, -1, 1) * (d > 0 ? 1 : 0);
     intent.my = clamp(dy * k, -1, 1);

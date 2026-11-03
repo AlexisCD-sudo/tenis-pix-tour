@@ -6,7 +6,7 @@ import { PlayerDef, ROSTER, getPlayerDef } from '../players/roster';
 import { SetScore } from '../scoring/score';
 
 export type Round = 'QF' | 'SF' | 'F';
-export type MatchId = 'QF1' | 'QF2' | 'SF1' | 'SF2' | 'F';
+export type MatchId = 'QF1' | 'QF2' | 'QF3' | 'QF4' | 'SF1' | 'SF2' | 'F';
 
 export interface BracketMatch {
   id: MatchId;
@@ -39,10 +39,14 @@ export function formatSets(sets: SetScore[], flip = false): string {
 }
 
 /**
- * Quadre de 6 jugadors: els dos primers caps de sèrie passen directament
- * a semifinals; la resta juguen quarts de final.
- *   QF1: cap 4 - cap 5   -> SF1 contra el cap 1
- *   QF2: cap 3 - cap 6   -> SF2 contra el cap 2
+ * Quadre de 8 jugadors (quarts, semifinals i final), sembrat pel valor global:
+ *   QF1: cap 1 - cap 8   \
+ *                         > SF1
+ *   QF2: cap 4 - cap 5   /
+ *   QF3: cap 2 - cap 7   \
+ *                         > SF2
+ *   QF4: cap 3 - cap 6   /
+ * Els dos primers caps només es poden trobar a la final.
  */
 export class Tournament {
   readonly matches: BracketMatch[];
@@ -58,12 +62,15 @@ export class Tournament {
     const ranked = [...ROSTER].sort((a, b) => b.rating - a.rating || a.id.localeCompare(b.id)).map((p) => p.id);
     this.seeds = ranked;
     const s = ranked;
+    const m = (id: MatchId, round: Round, a: string | null, b: string | null): BracketMatch => ({ id, round, a, b, winner: null, sets: null });
     this.matches = [
-      { id: 'QF1', round: 'QF', a: s[3], b: s[4], winner: null, sets: null },
-      { id: 'QF2', round: 'QF', a: s[2], b: s[5], winner: null, sets: null },
-      { id: 'SF1', round: 'SF', a: s[0], b: null, winner: null, sets: null },
-      { id: 'SF2', round: 'SF', a: s[1], b: null, winner: null, sets: null },
-      { id: 'F', round: 'F', a: null, b: null, winner: null, sets: null },
+      m('QF1', 'QF', s[0], s[7]),
+      m('QF2', 'QF', s[3], s[4]),
+      m('QF3', 'QF', s[1], s[6]),
+      m('QF4', 'QF', s[2], s[5]),
+      m('SF1', 'SF', null, null),
+      m('SF2', 'SF', null, null),
+      m('F', 'F', null, null),
     ];
   }
 
@@ -99,8 +106,10 @@ export class Tournament {
     m.winner = winnerId;
     m.sets = sets;
     m.stats = stats;
-    if (id === 'QF1') this.get('SF1').b = winnerId;
-    if (id === 'QF2') this.get('SF2').b = winnerId;
+    if (id === 'QF1') this.get('SF1').a = winnerId;
+    if (id === 'QF2') this.get('SF1').b = winnerId;
+    if (id === 'QF3') this.get('SF2').a = winnerId;
+    if (id === 'QF4') this.get('SF2').b = winnerId;
     if (id === 'SF1') this.get('F').a = winnerId;
     if (id === 'SF2') this.get('F').b = winnerId;
     if (id === 'F') this.champion = winnerId;
@@ -117,11 +126,9 @@ export class Tournament {
   /** Aplica el resultat d'un Match acabat (tenint en compte l'ordre dels jugadors). */
   reportMatch(m: BracketMatch, match: Match, swapped: boolean): void {
     const winnerIdx = match.score.winner ?? 0;
-    const p = swapped ? ([match.cfg.p1, match.cfg.p0] as const) : ([match.cfg.p0, match.cfg.p1] as const);
     const winnerId = (winnerIdx === 0 ? match.cfg.p0 : match.cfg.p1).id;
     // Conserva l'ordre a/b del quadre en els sets
     const sets = swapped ? match.score.sets.map((s) => ({ games: [s.games[1], s.games[0]] as [number, number], tiebreak: s.tiebreak ? ([s.tiebreak[1], s.tiebreak[0]] as [number, number]) : undefined })) : match.score.sets;
-    void p;
     this.report(m.id, winnerId, sets, match.stats);
   }
 }

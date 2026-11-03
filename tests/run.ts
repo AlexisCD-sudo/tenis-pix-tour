@@ -7,6 +7,7 @@ import { Tournament, simulateMatchSync } from '../src/tournament/tournament';
 import { ROSTER } from '../src/players/roster';
 import { Match } from '../src/game/match';
 import { AIController } from '../src/ai/ai';
+import { DIFFICULTY } from '../src/ai/difficulty';
 
 let passed = 0;
 const tests: [string, () => void][] = [];
@@ -114,6 +115,54 @@ test('partit al millor de 3 sets', () => {
   const before = s.points[0];
   s.pointWon(1);
   assert.equal(s.points[1] + before, before, 'no es puntua un cop acabat');
+});
+
+test('dos tie-breaks seguits: el servei rota bé i no hi ha estat residual', () => {
+  const s = new MatchScore(0);
+  const playTiebreak = (): number[] => {
+    for (let i = 0; i < 6; i++) {
+      winGame(s, 0);
+      winGame(s, 1);
+    }
+    assert.equal(s.tiebreak, true);
+    const seq: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      seq.push(s.server);
+      s.pointWon(i % 2 === 0 ? 0 : 1);
+    }
+    s.pointWon(0);
+    s.pointWon(0); // 8-6... (6-6 al tie-break) acaba amb dos de diferència
+    return seq;
+  };
+  // Primer set: tie-break fins que algú guanya
+  const first = playTiebreak();
+  assert.equal(s.setsWon[0] + s.setsWon[1], 1);
+  assert.equal(s.tiebreak, false);
+  assert.deepEqual(s.points, [0, 0]);
+  assert.deepEqual(s.games, [0, 0]);
+  const tbStarter = first[0];
+  // Després d'un tie-break serveix qui va rebre primer
+  assert.equal(s.server, 1 - tbStarter);
+  // Segon set també al tie-break
+  const second = playTiebreak();
+  assert.equal(s.winner !== null, true);
+  assert.equal(second[0], 1 - tbStarter, 'el segon tie-break comença pel servidor que li toca');
+  const pattern = (a: number[]): number[] => a.slice(1, 5).map((x) => (x === a[0] ? 0 : 1));
+  assert.deepEqual(pattern(first), [1, 1, 0, 0]);
+  assert.deepEqual(pattern(second), [1, 1, 0, 0]);
+});
+
+test('el cop de servei informa de la seva pròpia velocitat (km/h)', () => {
+  const m = new Match({ p0: ROSTER[0], p1: ROSTER[1], humanIdx: null, difficulty: 'normal', seed: 5, fast: true }, [new AIController(6), new AIController(7)]);
+  const kmh: number[] = [];
+  let n = 0;
+  while (m.phase !== 'match_end' && n++ < 120000 && kmh.length < 12) {
+    m.step(DT);
+    for (const e of m.drainEvents()) if (e.type === 'hit' && e.stroke === 'serve') kmh.push(e.kmh);
+  }
+  assert.ok(kmh.length >= 6);
+  for (const v of kmh) assert.ok(v > 80 && v < 240, `servei de ${v} km/h`);
+  assert.equal(Math.max(...kmh), Math.max(m.stats.p[0].maxServeKmh, m.stats.p[1].maxServeKmh));
 });
 
 // ------------------------------------------------------------------ física
@@ -253,36 +302,44 @@ test('solucionador: la velocitat de sortida segueix la potència', () => {
 });
 
 // ----------------------------------------------------------------- torneig
-test('torneig: 6 jugadors, 2 caps de sèrie directes a semifinals', () => {
-  assert.equal(ROSTER.length, 6);
-  assert.equal(new Set(ROSTER.map((r) => r.id)).size, 6);
+test('torneig: 8 jugadors, 4 quarts sense byes i els dos primers caps a meitats oposades', () => {
+  assert.equal(ROSTER.length, 8);
+  assert.equal(new Set(ROSTER.map((r) => r.id)).size, 8);
   const t = new Tournament('winner', 'normal', 1);
-  assert.equal(t.get('QF1').round, 'QF');
-  assert.equal(t.get('QF2').round, 'QF');
-  assert.equal(t.get('SF1').a, t.seeds[0]);
-  assert.equal(t.get('SF2').a, t.seeds[1]);
-  const inQF = new Set([t.get('QF1').a, t.get('QF1').b, t.get('QF2').a, t.get('QF2').b]);
-  assert.equal(inQF.size, 4);
-  assert.ok(!inQF.has(t.seeds[0]) && !inQF.has(t.seeds[1]));
+  const qfs = (['QF1', 'QF2', 'QF3', 'QF4'] as const).map((id) => t.get(id));
+  assert.ok(qfs.every((m) => m.round === 'QF' && m.a && m.b));
+  const ids = qfs.flatMap((m) => [m.a, m.b]);
+  assert.equal(new Set(ids).size, 8, 'tots els jugadors juguen els quarts');
+  // cap 1 i cap 2 no es poden trobar abans de la final
+  const half = (id: string): number => (['QF1', 'QF2'].includes(qfs.find((m) => m.a === id || m.b === id)!.id) ? 0 : 1);
+  assert.notEqual(half(t.seeds[0]), half(t.seeds[1]));
+  assert.deepEqual([t.get('QF1').a, t.get('QF1').b], [t.seeds[0], t.seeds[7]]);
+  assert.deepEqual([t.get('QF2').a, t.get('QF2').b], [t.seeds[3], t.seeds[4]]);
+  assert.equal(t.get('SF1').a, null);
 });
 
-test('torneig: el quadre avança fins al campió', () => {
+test('torneig: el quadre avança fins al campió (7 partits)', () => {
   const t = new Tournament('winner', 'normal', 3);
   let n = 0;
   let guard = 0;
-  while (!t.finished && guard++ < 10) {
+  const rounds: string[] = [];
+  while (!t.finished && guard++ < 12) {
     const m = t.nextMatch();
     assert.ok(m, 'hi ha un partit pendent');
+    rounds.push(m!.id);
     const setup = t.matchSetup(m!);
     const sim = simulateMatchSync(setup.p0, setup.p1, 50 + n);
     assert.equal(sim.phase, 'match_end');
     t.reportMatch(m!, sim, setup.swapped);
     n++;
   }
-  assert.equal(n, 5, 'es juguen 5 partits en total');
+  assert.equal(n, 7, 'es juguen 7 partits en total');
+  assert.deepEqual(rounds, ['QF1', 'QF2', 'QF3', 'QF4', 'SF1', 'SF2', 'F']);
   assert.ok(t.champion);
-  assert.ok(ROSTER.some((r) => r.id === t.champion));
   assert.equal(t.get('F').winner, t.champion);
+  // els finalistes surten de les semifinals correctes
+  assert.equal(t.get('F').a, t.get('SF1').winner);
+  assert.equal(t.get('F').b, t.get('SF2').winner);
 });
 
 // ----------------------------------------------------------------- partits
@@ -315,7 +372,7 @@ test('IA: dificultat difícil guanya més sovint que fàcil contra el mateix riv
       ]);
       // p0 amb la dificultat provada, p1 normal
       m.recordEvents = false;
-      const d = { easy: { reaction: 0.3, perceptionNoise: 1.6, speedMult: 0.86, errorMult: 1.7, powerMult: 0.9, tactics: 0.35 }, hard: { reaction: 0.12, perceptionNoise: 0.35, speedMult: 1.04, errorMult: 0.7, powerMult: 1.04, tactics: 0.9 } }[diff0];
+      const d = DIFFICULTY[diff0];
       m.players[0].diff = d;
       m.controllers = [new AIController(900 + i, d), new AIController(950 + i)];
       while (m.phase !== 'match_end' && m.time < 20000) m.step(DT);
@@ -333,6 +390,28 @@ test('regles: la pilota fora, a la xarxa i el doble bot donen el punt correcte',
   const s = m.stats;
   assert.ok(s.p[0].aces + s.p[1].aces >= 0);
   assert.ok(s.longestRally >= 1);
+});
+
+test('quadre: les ranures per decidir són sempre null, mai undefined, en cada fase del torneig', () => {
+  const t = new Tournament('winner', 'normal', 5);
+  const check = (): void => {
+    for (const m of t.matches) {
+      for (const slot of [m.a, m.b, m.winner]) {
+        assert.ok(slot === null || (typeof slot === 'string' && ROSTER.some((r) => r.id === slot)), `ranura invàlida a ${m.id}: ${String(slot)}`);
+      }
+      if (m.round !== 'QF') assert.ok(m.a === null || m.b === null || (m.a && m.b), 'ranura mixta');
+    }
+  };
+  check();
+  let n = 0;
+  while (!t.finished && n++ < 10) {
+    const m = t.nextMatch()!;
+    assert.ok(m.a && m.b, 'nextMatch només retorna partits amb dos jugadors');
+    const setup = t.matchSetup(m);
+    t.reportMatch(m, simulateMatchSync(setup.p0, setup.p1, 70 + n), setup.swapped);
+    check();
+  }
+  assert.ok(t.finished);
 });
 
 let failed = 0;

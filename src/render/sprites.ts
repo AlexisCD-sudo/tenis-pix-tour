@@ -363,7 +363,7 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   const armT = tkW(0.095 * b * hScale);
 
   // posició de mans
-  let dhx = mir * pose.hx + 0;
+  const dhx = mir * pose.hx;
   const dhy = pose.hy * hScale + lift;
   let ohx = mir * pose.ox;
   let ohy = pose.oy * hScale + lift;
@@ -371,7 +371,6 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
     ohx = dhx - mir * 0.04;
     ohy = dhy - 0.04;
   }
-  dhx += 0;
 
   const drawArm = (sh: [number, number], hx: number, hy: number, dir: number): void => {
     const el = ik(sh[0], sh[1], hx, hy, L1, L2, dir);
@@ -389,8 +388,10 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
     px(ctx, X(hx), Y(hy), skinSh, Math.max(1, tkW(0.07)));
   };
 
-  // El braç no dominant va per darrere del cos si és d'esquena
-  if (!pose.twoHand || !back) drawArm(shoulderOff, ohx, ohy, mir * (back ? 1 : -1));
+  // Braç no dominant: a una mà va per darrere del cos; a dues mans agafa la raqueta davant del cos
+  // (tant d'esquena com de cara), així mai queda tapat pel tors.
+  const offDir = mir * (back ? 1 : -1);
+  if (!pose.twoHand) drawArm(shoulderOff, ohx, ohy, offDir);
 
   // --- Tors ---
   const torsoBottom = hipY + 0.05;
@@ -467,7 +468,7 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   }
 
   // --- Braç dominant i raqueta ---
-  if (pose.twoHand && back) drawArm(shoulderOff, ohx, ohy, mir * 1);
+  if (pose.twoHand) drawArm(shoulderOff, ohx, ohy, offDir);
   drawArm(shoulderDom, dhx, dhy, -mir * (back ? 1 : -1));
   drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale);
 }

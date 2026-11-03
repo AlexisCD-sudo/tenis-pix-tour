@@ -4,7 +4,7 @@ import { Match } from '../game/match';
 import { Settings, loadRanking, loadSettings, recordMatch, recordTournament, saveSettings } from '../game/storage';
 import { ROSTER, getPlayerDef } from '../players/roster';
 import { BracketMatch, ROUND_LABEL, Tournament } from '../tournament/tournament';
-import { Bracket } from './Bracket';
+import { BRACKET_H, BRACKET_W, Bracket } from './Bracket';
 import { Champion } from './Champion';
 import { MatchScreen, MatchSetup } from './MatchScreen';
 import { PixelButton, PixelText } from './PixelText';
@@ -179,7 +179,7 @@ export function App() {
             next={next}
             human={human}
             humanOut={humanOut}
-            scale={Math.min(1, (vp.w - 24) / 740)}
+            scale={Math.max(0.4, Math.min(1, (vp.w - 24) / BRACKET_W, (vp.h - 190) / BRACKET_H))}
             onPlay={() => next && playMatch(next)}
             onSim={() => {
               if (!next) return;
@@ -203,6 +203,7 @@ export function App() {
             roundLabel={`${ROUND_LABEL[current.m.round]}`}
             onFinish={onMatchFinish}
             onQuit={goMenu}
+            onSettings={setSettings}
           />
         );
       }
@@ -291,7 +292,7 @@ function BracketScreen({
   return (
     <div className="panel-screen">
       <PixelText text="QUADRE DEL TORNEIG" scale={3} color="#ffe066" />
-      <Bracket tour={tour} scale={Math.max(0.45, scale)} />
+      <Bracket tour={tour} scale={scale} />
       {next ? (
         <>
           <PixelText text={`${ROUND_LABEL[next.round]}: ${nm}`} scale={2} color="#ffffff" />

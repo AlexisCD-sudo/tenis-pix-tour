@@ -8,6 +8,7 @@ import { GameRunner, HudState } from '../game/runner';
 import { Settings } from '../game/storage';
 import { PlayerDef } from '../players/roster';
 import { Hud } from './Hud';
+import { PauseMenu } from './PauseMenu';
 import { useViewport } from './hooks';
 import { PixelButton, PixelText } from './PixelText';
 import { TouchControls } from './TouchControls';
@@ -28,9 +29,11 @@ interface Props {
   attract?: boolean;
   onFinish: (m: Match) => void;
   onQuit: () => void;
+  /** Canvis d'opcions fets des del menú de pausa. */
+  onSettings?: (s: Settings) => void;
 }
 
-export function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false, onFinish, onQuit }: Props) {
+export function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false, onFinish, onQuit, onSettings }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runnerRef = useRef<GameRunner | null>(null);
   const inputRef = useRef<InputManager>(new InputManager());
@@ -75,6 +78,11 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
     runnerRef.current?.setPaused(paused);
   }, [paused]);
 
+  // La guia de punteria es pot canviar en directe des del menú de pausa
+  useEffect(() => {
+    runnerRef.current?.setAssist(settings.assist);
+  }, [settings.assist]);
+
   const togglePause = (): void => {
     const r = runnerRef.current;
     if (!r) return;
@@ -85,7 +93,7 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
   };
 
   return (
-    <div className={`stage ${vp.portrait ? 'portrait' : 'landscape'} ${touch ? 'with-touch' : ''}`}>
+    <div className={`stage ${vp.portrait ? 'portrait' : 'landscape'} ${touch ? 'with-touch' : ''} ${paused ? 'is-paused' : ''}`}>
       <div className="view">
         <canvas ref={canvasRef} className="game-canvas" />
         {!attract && hud ? <Hud hud={hud} ps={vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps} onPause={togglePause} /> : null}
@@ -109,19 +117,19 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
             )}
           </div>
         ) : null}
-        {paused ? (
-          <div className="overlay pause">
-            <PixelText text="PAUSA" scale={5} color="#ffe066" />
-            <PixelButton label="CONTINUAR" variant="primary" onClick={togglePause} />
-            <PixelButton
-              label="ABANDONAR PARTIT"
-              variant="danger"
-              onClick={() => {
-                runnerRef.current?.stop();
-                onQuit();
-              }}
-            />
-          </div>
+        {paused && !attract ? (
+          <PauseMenu
+            settings={settings}
+            onSettings={(n) => onSettings?.(n)}
+            touch={touch}
+            ps={vp.portrait || vp.h < 520 ? 1 : 2}
+            compact={vp.h < 520}
+            onResume={togglePause}
+            onQuit={() => {
+              runnerRef.current?.stop();
+              onQuit();
+            }}
+          />
         ) : null}
       </div>
       {touch ? <TouchControls input={inputRef.current} serving={!!hud && hud.humanServing && (hud.phase === 'serve_wait' || hud.phase === 'toss')} ps={vp.ps >= 2 ? 2 : 1} /> : null}

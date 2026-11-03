@@ -16,7 +16,18 @@ interface Spot {
   hair: string;
   shirt: string;
   depth: number;
+  /** Constants del dibuix (es calculen una sola vegada). */
+  x: number;
+  hw: number;
+  hx: number;
+  hairH: number;
 }
+
+/**
+ * Per sota d'aquesta excitació la oscil·lació és < 0,5 px i es arrodoneix a 0,
+ * de manera que el públic es veu exactament igual que la imatge estàtica.
+ */
+const IDLE_MAX = 0.17;
 
 /** Públic animat: reacciona a punts, aplaudiments i punts llargs. */
 export class Crowd {
@@ -35,9 +46,15 @@ export class Crowd {
       const w = Math.max(3, Math.round(0.46 * p.ppm));
       const h = Math.max(3, Math.round(0.5 * p.ppm));
       if (p.sx < -8 || p.sx > W + 8 || p.sy < -8 || p.sy > H) continue;
+      const hw = Math.max(2, Math.round(w * 0.55));
+      const sx = Math.round(p.sx);
       this.spots.push({
-        sx: Math.round(p.sx),
+        sx,
         sy: Math.round(p.sy),
+        x: sx - Math.floor(w / 2),
+        hw,
+        hx: sx - Math.floor(hw / 2),
+        hairH: Math.max(1, Math.round(hw * 0.45)),
         w,
         h,
         seat,
@@ -66,14 +83,43 @@ export class Crowd {
     }
   }
 
+  /** Públic en repòs, pintat una sola vegada a una imatge. */
+  private idleLayer: HTMLCanvasElement | null = null;
+
+  private buildIdleLayer(): HTMLCanvasElement {
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const g = c.getContext('2d')!;
+    this.drawLive(g, 0, 0.12, false);
+    return c;
+  }
+
   draw(ctx: Ctx, time: number): void {
     const e = this.excitement;
+    if (e <= IDLE_MAX && this.wave < 0) {
+      this.idleLayer ??= this.buildIdleLayer();
+      ctx.drawImage(this.idleLayer, 0, 0);
+    } else {
+      this.drawLive(ctx, time, e, true);
+    }
+    // Flaixos de càmera als punts importants
+    if (this.flash > 0.2) {
+      const n = Math.floor(this.flash * 14);
+      for (let i = 0; i < n; i++) {
+        const s = this.spots[Math.floor(((Math.sin(time * 91 + i * 17.3) + 1) / 2) * (this.spots.length - 1))];
+        if (s) px(ctx, s.sx, s.sy - 4, '#ffffff', 2);
+      }
+    }
+  }
+
+  private drawLive(ctx: Ctx, time: number, e: number, animated: boolean): void {
     for (const s of this.spots) {
       const seat = s.seat;
       const ph = seat.phase;
       let bob = Math.sin(time * (2 + e * 7) + ph) * (0.3 + e * 1.1);
       let arms = e > 0.55 && Math.sin(ph * 5 + time * 6) > 0.1;
-      if (this.wave >= 0) {
+      if (animated && this.wave >= 0) {
         const wx = seat.zone === 'far' ? seat.x + 22 : seat.zone === 'left' ? 44 + (20 - seat.y) : 44 + 22 + 44 + seat.y;
         const d = this.wave - wx * 0.5;
         if (d > -2 && d < 4) {
@@ -82,26 +128,17 @@ export class Crowd {
         }
       }
       const by = Math.round(s.sy + bob);
-      const x = s.sx - Math.floor(s.w / 2);
+      const x = s.x;
       // cos
       rect(ctx, x, by, s.w, s.h, s.shirt);
       // cap
-      const hw = Math.max(2, Math.round(s.w * 0.55));
-      rect(ctx, s.sx - Math.floor(hw / 2), by - hw, hw, hw, s.skin);
-      rect(ctx, s.sx - Math.floor(hw / 2), by - hw, hw, Math.max(1, Math.round(hw * 0.45)), s.hair);
+      rect(ctx, s.hx, by - s.hw, s.hw, s.hw, s.skin);
+      rect(ctx, s.hx, by - s.hw, s.hw, s.hairH, s.hair);
       if (arms) {
         px(ctx, x - 1, by - 2, s.skin, 1);
         px(ctx, x + s.w, by - 2, s.skin, 1);
         px(ctx, x - 1, by - 1, s.skin, 1);
         px(ctx, x + s.w, by - 1, s.skin, 1);
-      }
-    }
-    // Flaixos de càmera als punts importants
-    if (this.flash > 0.2) {
-      const n = Math.floor(this.flash * 14);
-      for (let i = 0; i < n; i++) {
-        const s = this.spots[Math.floor(((Math.sin(time * 91 + i * 17.3) + 1) / 2) * (this.spots.length - 1))];
-        if (s) px(ctx, s.sx, s.sy - 4, '#ffffff', 2);
       }
     }
   }
