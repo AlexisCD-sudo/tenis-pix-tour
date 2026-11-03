@@ -46,11 +46,6 @@ export function Hud({ hud, ps, onPause }: Props) {
         </button>
         {hud.rally >= 6 && hud.phase === 'rally' ? <PixelText text={`${hud.rally} COPS`} scale={Math.max(1, ps - 1)} color="#ffe066" /> : null}
       </div>
-      {hud.banner ? (
-        <div className="banner" key={hud.bannerId}>
-          <PixelText text={hud.banner.toUpperCase()} scale={ps} color="#ffffff" />
-        </div>
-      ) : null}
       {hud.phase === 'serve_wait' && hud.humanServing ? (
         <div className="serve-hint">
           <PixelText text={hud.serveStage === 2 ? '2N SERVEI · TECLA DE COP' : '1R SERVEI · TECLA DE COP'} scale={Math.max(1, ps - 1)} color="#ffe066" />
