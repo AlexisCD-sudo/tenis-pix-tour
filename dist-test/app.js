@@ -27596,19 +27596,41 @@ var STATS = [
   ["PRECISIO", "precision"],
   ["RESISTENCIA", "stamina"]
 ];
-function Card2({ def, side, size }) {
+function Card2({ def, side, scale, stats }) {
   const color = side === "l" ? "#8cc0ff" : "#ff9a8c";
   return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `vs-card vs-${side}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-portrait", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(SpritePreview, { def, s: 46, width: 84, height: 112, scale: size === 3 ? 4 : size === 2 ? 3 : 2 }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.name.toUpperCase(), scale: size === 1 ? 2 : 3, color: "#ffffff" }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-portrait", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(SpritePreview, { def, s: 46, width: 84, height: 112, scale }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.name.toUpperCase(), scale: scale >= 3 ? 3 : scale === 2 ? 2 : 1, color: "#ffffff" }),
     /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.style.label.toUpperCase(), scale: 1, color }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-stats", children: STATS.map(([label, k]) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-stat", children: [
+    stats ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-stats", children: STATS.map(([label, k]) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-stat", children: [
       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: label, scale: 1, color: "#dfe8ff" }),
       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-bar", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-fill", style: { width: `${def.stats[k]}%`, background: color } }) })
-    ] }, k)) })
+    ] }, k)) }) : null
   ] });
 }
-function VsIntro({ a, b, roundLabel, size, onDone }) {
+function VsIntro({ a, b, roundLabel, onDone }) {
+  const root = (0, import_react8.useRef)(null);
+  const [fit, setFit] = (0, import_react8.useState)({ scale: 2, stats: false });
+  (0, import_react8.useLayoutEffect)(() => {
+    const el = root.current;
+    if (!el) return;
+    const calc = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      for (const stats of [true, false]) {
+        const reserved = stats ? 200 : 96;
+        const sc = Math.min(4, Math.floor((h - reserved) / 112), Math.floor((w / 2 - 70) / 84));
+        if (sc >= 2 || !stats) {
+          setFit({ scale: Math.max(1, sc), stats: stats && sc >= 2 && w >= 560 });
+          return;
+        }
+      }
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [leaving, setLeaving] = (0, import_react8.useState)(false);
   const doneRef = (0, import_react8.useRef)(false);
   const born = (0, import_react8.useRef)(performance.now());
@@ -27631,13 +27653,13 @@ function VsIntro({ a, b, roundLabel, size, onDone }) {
       window.removeEventListener("pointerdown", skip);
     };
   }, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `vs ${leaving ? "vs-out" : ""}`, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { ref: root, className: `vs ${leaving ? "vs-out" : ""}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-bg" }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-round", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: roundLabel, scale: size === 1 ? 1 : 2, color: "#ffe066" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-round", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: roundLabel, scale: fit.scale >= 3 ? 2 : 1, color: "#ffe066" }) }),
     /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-row", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: a, side: "l", size }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-mid", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "VS", scale: size === 3 ? 14 : size === 2 ? 10 : 6, color: "#ffe066", outline: "#7a1010" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: b, side: "r", size })
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: a, side: "l", scale: fit.scale, stats: fit.stats }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-mid", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "VS", scale: fit.scale >= 4 ? 14 : fit.scale === 3 ? 10 : fit.scale === 2 ? 6 : 4, color: "#ffe066", outline: "#7a1010" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: b, side: "r", scale: fit.scale, stats: fit.stats })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-skip", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "PREM QUALSEVOL TECLA", scale: 1, color: "#cfe0ff" }) })
   ] });
@@ -27714,7 +27736,7 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
       /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("canvas", { ref: canvasRef, className: "game-canvas" }),
       !attract && hud ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Hud, { hud, ps: vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps, onPause: togglePause }) : null,
       !attract ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "round-tag", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: roundLabel, scale: 1, color: "#9fb4e8" }) }) : null,
-      vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VsIntro, { a: setup.p0, b: setup.p1, roundLabel, size: vp.portrait || vp.h < 520 ? 1 : vp.h < 760 ? 2 : 3, onDone: endVs }) : null,
+      vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VsIntro, { a: setup.p0, b: setup.p1, roundLabel, onDone: endVs }) : null,
       hint && !attract && !paused && !vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "hint", children: touch ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "JOYSTICK: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "COP: PREM AL MOMENT EXACTE \xB7 EFECTE: SLICE", scale: 1, color: "#ffe066" })

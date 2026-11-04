@@ -119,7 +119,7 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
           </div>
         ) : null}
         {vs ? (
-          <VsIntro a={setup.p0} b={setup.p1} roundLabel={roundLabel} size={vp.portrait || vp.h < 520 ? 1 : vp.h < 760 ? 2 : 3} onDone={endVs} />
+          <VsIntro a={setup.p0} b={setup.p1} roundLabel={roundLabel} onDone={endVs} />
         ) : null}
         {hint && !attract && !paused && !vs ? (
           <div className="hint">

@@ -166,4 +166,4 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 @keyframes vs-grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
 @keyframes vs-stripes { to { background-position: 160px 0 } }
 @keyframes vs-blink { 50% { opacity: .25 } }
-@media (max-width: 700px) { .vs-row { flex-direction: column; gap: 0; } .vs-card { flex: 0 1 auto; } .vs-stats { display: none; } }
+

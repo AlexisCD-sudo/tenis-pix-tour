@@ -842,15 +842,3 @@ canvas {
     opacity: .25;
   }
 }
-@media (max-width: 700px) {
-  .vs-row {
-    flex-direction: column;
-    gap: 0;
-  }
-  .vs-card {
-    flex: 0 1 auto;
-  }
-  .vs-stats {
-    display: none;
-  }
-}
