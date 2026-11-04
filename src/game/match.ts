@@ -6,7 +6,7 @@ import { Difficulty, DIFFICULTY } from '../ai/difficulty';
 import { HitKey, Intent, NO_INTENT, Player, Stroke } from '../players/player';
 import { PlayerDef } from '../players/roster';
 import { ServeCtx, buildHit, chooseStroke, contactQuality, inServiceBox } from '../players/shots';
-import { MatchScore, Side } from '../scoring/score';
+import { MatchScore, PointOutcome, Side } from '../scoring/score';
 
 export type Phase = 'intro' | 'serve_wait' | 'toss' | 'rally' | 'point_end' | 'match_end';
 
@@ -162,6 +162,7 @@ export class Match {
     }
 
     // Jugadors
+    for (const p of this.players) p.serveStance = this.phase === 'serve_wait' && this.server === p.idx;
     for (const p of this.players) {
       const it = intents[p.idx];
       const frozen = this.phase === 'intro' || this.phase === 'match_end';
@@ -228,6 +229,8 @@ export class Match {
       p.vy = 0;
       p.swing = null;
       p.tossing = false;
+      p.emote = null;
+      p.splitT = 0;
     }
   }
 
@@ -273,7 +276,8 @@ export class Match {
     const b = this.ball;
     b.x = ps.x + physRight * 0.3;
     b.y = ps.y + ps.dirY * 0.25;
-    b.z = 0.95;
+    // El servidor bota la pilota abans de llançar-la (només visual, determinista)
+    b.z = 0.95 - 0.36 * Math.abs(Math.sin(this.time * 3.4));
     b.vx = b.vy = b.vz = 0;
     b.wx = b.wy = b.wz = 0;
   }
@@ -285,7 +289,9 @@ export class Match {
     const ps = this.players[s];
     if (it.hit && !ps.swing) {
       const b = this.ball;
-      b.vz = 6.25 + this.rng.range(-0.15, 0.15);
+      // L'àpex del llançament és el mateix tant si la pilota bota més alt com més baix
+      const vz0 = 6.25 + this.rng.range(-0.15, 0.15);
+      b.vz = Math.sqrt(vz0 * vz0 + 2 * 9.81 * Math.max(0, 0.95 - b.z));
       b.vy = ps.dirY * 0.4;
       b.vx = 0;
       ps.tossing = true;
@@ -338,7 +344,8 @@ export class Match {
       // Inici d'un cop
       if (!frozen && it.hit && !p.swing && p.swingCool <= 0 && this.phase === 'rally') {
         const stroke = chooseStroke(p, this.ball, this.bounced, it.hit);
-        p.beginSwing(stroke, it.hit, it.aimX, it.aimY);
+        const side: 1 | -1 = (this.ball.x - p.x) * p.rightX >= -0.15 ? 1 : -1;
+        p.beginSwing(stroke, it.hit, it.aimX, it.aimY, side);
       }
       const sw = p.swing;
       if (!sw || sw.done) continue;
@@ -396,6 +403,10 @@ export class Match {
     this.rallyHits++;
     this.hitSeq++;
     p.tossing = false;
+    // El rival fa un petit salt de preparació (split step) quan veu el cop
+    const other = this.players[1 - p.idx];
+    other.splitT = 0.22;
+    other.emote = null;
     this.lastHit = { player: p.idx, x: b.x, y: b.y, z: b.z, stroke: sw.stroke, variant: sw.variant, quality };
     if (isServe) {
       this.phase = 'rally';
@@ -584,6 +595,33 @@ export class Match {
     this.matchOverPending = out.matchWon;
     this.faultReplay = false;
     for (const p of this.players) p.recover(0.02);
+    this.startEmotes(winner, loser, reason, out);
+  }
+
+  /** Celebracions i decepcions després del punt (només animació, no afecten el joc). */
+  private startEmotes(winner: Side, loser: Side, reason: PointReason, out: PointOutcome): void {
+    const w = this.players[winner];
+    const l = this.players[loser];
+    if (out.matchWon) {
+      w.startEmote('win', 99);
+      l.startEmote('lose', 99);
+      return;
+    }
+    if (out.setWon) {
+      w.startEmote('arms', 2.4);
+      l.startEmote('shake', 1.6);
+      return;
+    }
+    if (out.gameWon) {
+      w.startEmote('fist', 1.6);
+      l.startEmote('slump', 1.2);
+      return;
+    }
+    const error = reason === 'out' || reason === 'net' || reason === 'doublefault';
+    const great = reason === 'ace' || (reason === 'winner' && this.rallyHits >= 7);
+    if (great) w.startEmote('fist', 1.3);
+    if (error && (this.rallyHits >= 6 || reason === 'doublefault')) l.startEmote('slump', 1.1);
+    else if (great && reason === 'winner') l.startEmote('shake', 1.0);
   }
 
   private checkDead(dt: number): void {

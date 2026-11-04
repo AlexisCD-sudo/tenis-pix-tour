@@ -1,5 +1,5 @@
 import { clamp } from '../engine/math';
-import { HitKey, Player, Stroke } from '../players/player';
+import { HitKey, Player, Stroke, EmoteKind } from '../players/player';
 import { PlayerLook, PlayerStyle } from '../players/roster';
 import { Ctx, disc, line, px, rect, shade } from './pixel';
 
@@ -8,7 +8,11 @@ import { Ctx, disc, line, px, rect, shade } from './pixel';
  * amb primitives de píxel a partir d'una pose interpolada (claus d'animació),
  * de manera que els moviments són fluids i cada jugador té el seu aspecte.
  * Coordenades de pose: metres, x cap a la dreta de la pantalla, y cap amunt,
- * per a un destre vist d'esesquena (es mirallen segons vista i lateralitat).
+ * per a un destre vist d'esquena (es mirallen segons vista i lateralitat).
+ *
+ * Profunditat dels braços: `fd`/`ofd` indiquen si la mà dominant / lliure és
+ * davant del cos (+, cap a on mira el jugador) o darrere (−). Això decideix si
+ * el braç es dibuixa darrere o davant del tors i evita braços "transparents".
  */
 interface Key {
   t: number;
@@ -21,19 +25,17 @@ interface Key {
   lean: number;
   crouch: number;
   lift: number;
+  /** Desplaçament lateral del cos (pes) cap al costat dominant. */
+  shift: number;
+  fd: number;
+  ofd: number;
+  /** 0 = mà lliure pròpia, 1 = agafa la raqueta amb dues mans. */
+  grip: number;
 }
 
-export interface Pose {
-  hx: number;
-  hy: number;
-  ang: number;
-  ox: number;
-  oy: number;
-  twist: number;
-  lean: number;
-  crouch: number;
-  lift: number;
-  twoHand: boolean;
+type Fields = Omit<Key, 't'>;
+
+export interface Pose extends Fields {
   /** Peus (offsets respecte al centre, metres). */
   footL: [number, number];
   footR: [number, number];
@@ -41,18 +43,15 @@ export interface Pose {
   bob: number;
 }
 
-const K = (t: number, hx: number, hy: number, ang: number, ox: number, oy: number, twist = 0, lean = 0, crouch = 0, lift = 0): Key => ({
-  t, hx, hy, ang, ox, oy, twist, lean, crouch, lift,
-});
-
-const READY = K(0, 0.3, 1.0, 0.8, 0.12, 1.0, 0, 0, 0.07, 0);
+const BASE: Fields = {
+  hx: 0.3, hy: 1.0, ang: 0.8, ox: 0.12, oy: 1.0, twist: 0, lean: 0, crouch: 0.07, lift: 0, shift: 0, fd: 1, ofd: 1, grip: 1,
+};
+const K = (t: number, o: Partial<Fields> = {}): Key => ({ ...BASE, t, ...o });
 
 function lerpKey(a: Key, b: Key, f: number): Key {
-  const l = (x: number, y: number) => x + (y - x) * f;
-  return {
-    t: l(a.t, b.t), hx: l(a.hx, b.hx), hy: l(a.hy, b.hy), ang: l(a.ang, b.ang), ox: l(a.ox, b.ox), oy: l(a.oy, b.oy),
-    twist: l(a.twist, b.twist), lean: l(a.lean, b.lean), crouch: l(a.crouch, b.crouch), lift: l(a.lift, b.lift),
-  };
+  const o = {} as Record<string, number>;
+  for (const k of Object.keys(a) as (keyof Key)[]) o[k] = a[k] + (b[k] - a[k]) * f;
+  return o as unknown as Key;
 }
 
 const smoothstep = (f: number): number => f * f * (3 - 2 * f);
@@ -70,151 +69,221 @@ function sampleKeys(keys: Key[], t: number): Key {
   return keys[keys.length - 1];
 }
 
-function strokeKeys(stroke: Stroke, variant: HitKey, c: number, st: PlayerStyle): { keys: Key[]; twoHand: boolean } {
-  const T = (f: number) => f;
-  const tb = T(c * 0.5);
-  const tf = T(c + (1 - c) * 0.4);
-  let twoHand = true;
+/** Claus d'un cop: preparació, caiguda de raqueta, contacte, acompanyament i final. */
+function strokeKeys(stroke: Stroke, variant: HitKey, c: number, st: PlayerStyle, side: 1 | -1): Key[] {
+  const tb = c * 0.5;
+  const dr = c * 0.82;
+  const tf = c + (1 - c) * 0.4;
   let keys: Key[];
   switch (stroke) {
     case 'fh': {
       keys = [
-        K(0, 0.3, 1.0, 0.8, 0.12, 1.0, 0, 0, 0.07),
-        K(tb, 0.76, 1.1, 1.55, -0.05, 1.3, 0.7, -0.02, 0.12),
-        K(c, 0.58, 1.0, 0.25, 0.1, 1.05, -0.1, 0.04, 0.09),
-        K(tf, 0.05, 1.45, -1.0, 0.2, 1.15, -0.6, 0.05, 0.04),
-        K(1, -0.3, 1.62, -1.9, 0.15, 1.1, -0.8, 0.04, 0.03),
-      ];
-      twoHand = false;
-      if (variant === 'top') {
-        keys[2].hy -= 0.16;
-        keys[3].hy += 0.18;
-        keys[4].hy += 0.12;
-      } else if (variant === 'slice') {
-        keys[1].hy += 0.22;
-        keys[3].hx = 0.4;
-        keys[3].hy = 1.05;
-        keys[4].hx = 0.5;
-        keys[4].hy = 0.8;
-        keys[4].ang = 0.3;
-      } else if (variant === 'lob') {
-        keys[2].hy -= 0.3;
-        keys[2].crouch = 0.2;
-        keys[3].hy += 0.4;
-        keys[4].hx = 0.15;
-        keys[4].hy = 1.95;
-        keys[4].ang = -0.6;
-      }
-      if (st.lasso && variant !== 'slice') {
-        keys[3].hx = 0.15;
-        keys[3].hy = 1.75;
-        keys[4].hx = -0.2;
-        keys[4].hy = 1.95;
-        keys[4].ang = -2.6;
-      }
-      break;
-    }
-    case 'bh': {
-      twoHand = !st.oneHandBackhand;
-      const one = st.oneHandBackhand;
-      keys = [
-        K(0, 0.3, 1.0, 0.8, 0.12, 1.0, 0, 0, 0.07),
-        K(tb, -0.55, 1.12, -1.5, one ? 0.45 : -0.45, one ? 1.4 : 1.12, -0.7, -0.02, 0.12),
-        K(c, -0.5, 1.0, -0.2, one ? 0.6 : -0.35, one ? 1.3 : 1.0, 0.1, 0.04, 0.09),
-        K(tf, 0.15, 1.45, 1.0, one ? 0.65 : 0.1, one ? 1.4 : 1.4, 0.55, 0.05, 0.04),
-        K(1, 0.4, 1.68, 1.9, one ? 0.7 : 0.3, one ? 1.5 : 1.6, 0.8, 0.04, 0.03),
+        K(0),
+        K(tb, { hx: 0.78, hy: 1.12, ang: 1.55, ox: -0.1, oy: 1.32, twist: 0.7, lean: -0.02, crouch: 0.12, shift: -0.05, fd: -0.5, ofd: 0.6, grip: 0.15 }),
+        K(dr, { hx: 0.64, hy: 0.86, ang: 2.15, ox: -0.05, oy: 1.3, twist: 0.45, crouch: 0.15, fd: -0.35, ofd: 0.7, grip: 0 }),
+        K(c, { hx: 0.58, hy: 1.0, ang: 0.25, ox: -0.12, oy: 1.22, twist: -0.1, lean: 0.04, crouch: 0.09, shift: 0.09, fd: 0.7, ofd: 0.8, grip: 0 }),
+        K(tf, { hx: 0.05, hy: 1.45, ang: -1.0, ox: 0.1, oy: 1.18, twist: -0.6, lean: 0.05, crouch: 0.04, shift: 0.1, fd: 0.5, ofd: 0.5, grip: 0 }),
+        K(1, { hx: -0.3, hy: 1.62, ang: -1.9, ox: 0.18, oy: 1.1, twist: -0.8, lean: 0.04, crouch: 0.03, shift: 0.08, fd: 0.3, ofd: 0.4, grip: 0.5 }),
       ];
       if (variant === 'top') {
-        keys[2].hy -= 0.15;
-        keys[3].hy += 0.18;
-        keys[4].hy += 0.1;
+        keys[2].hy -= 0.2;
+        keys[3].hy -= 0.1;
+        keys[4].hy += 0.18;
+        keys[5].hy += 0.12;
       } else if (variant === 'slice') {
         keys[1].hy += 0.25;
-        keys[3].hx = -0.2;
-        keys[3].hy = 1.05;
-        keys[4].hx = -0.5;
-        keys[4].hy = 0.85;
-        keys[4].ang = -0.3;
+        keys[2].hy = 1.15;
+        keys[2].ang = 1.2;
+        keys[4].hx = 0.4;
+        keys[4].hy = 1.05;
+        keys[5].hx = 0.5;
+        keys[5].hy = 0.8;
+        keys[5].ang = 0.3;
       } else if (variant === 'lob') {
         keys[2].hy -= 0.3;
         keys[2].crouch = 0.2;
-        keys[4].hy = 1.9;
+        keys[3].crouch = 0.17;
+        keys[4].hy += 0.4;
+        keys[5].hx = 0.15;
+        keys[5].hy = 1.95;
+        keys[5].ang = -0.6;
       }
-      break;
+      if (st.lasso && variant !== 'slice') {
+        keys[4].hx = 0.15;
+        keys[4].hy = 1.75;
+        keys[5].hx = -0.2;
+        keys[5].hy = 1.95;
+        keys[5].ang = -2.6;
+      }
+      return keys;
+    }
+    case 'bh': {
+      const one = st.oneHandBackhand;
+      const g = one ? 0 : 1;
+      keys = [
+        K(0),
+        K(tb, { hx: -0.55, hy: 1.12, ang: -1.5, ox: one ? 0.45 : -0.45, oy: one ? 1.4 : 1.12, twist: -0.7, lean: -0.02, crouch: 0.12, shift: 0.05, fd: -0.4, ofd: one ? 0.4 : -0.4, grip: g }),
+        K(dr, { hx: -0.5, hy: 0.9, ang: -2.1, ox: one ? 0.5 : -0.4, oy: one ? 1.38 : 0.9, twist: -0.5, crouch: 0.15, fd: -0.3, ofd: one ? 0.4 : -0.3, grip: g }),
+        K(c, { hx: -0.5, hy: 1.0, ang: -0.2, ox: one ? 0.6 : -0.35, oy: one ? 1.3 : 1.0, twist: 0.1, lean: 0.04, crouch: 0.09, shift: -0.08, fd: 0.7, ofd: one ? 0.5 : 0.7, grip: g }),
+        K(tf, { hx: 0.15, hy: 1.45, ang: 1.0, ox: one ? 0.65 : 0.1, oy: 1.4, twist: 0.55, lean: 0.05, crouch: 0.04, shift: -0.1, fd: 0.5, ofd: one ? 0.3 : 0.5, grip: g }),
+        K(1, { hx: 0.4, hy: 1.68, ang: 1.9, ox: one ? 0.7 : 0.3, oy: one ? 1.5 : 1.6, twist: 0.8, lean: 0.04, crouch: 0.03, shift: -0.1, fd: 0.3, ofd: one ? 0.2 : 0.3, grip: g }),
+      ];
+      if (variant === 'top') {
+        keys[2].hy -= 0.18;
+        keys[3].hy -= 0.1;
+        keys[4].hy += 0.18;
+        keys[5].hy += 0.1;
+      } else if (variant === 'slice') {
+        keys[1].hy += 0.25;
+        keys[2].hy = 1.15;
+        keys[2].ang = -1.2;
+        keys[4].hx = -0.2;
+        keys[4].hy = 1.05;
+        keys[5].hx = -0.5;
+        keys[5].hy = 0.85;
+        keys[5].ang = -0.3;
+      } else if (variant === 'lob') {
+        keys[2].hy -= 0.3;
+        keys[2].crouch = 0.2;
+        keys[3].crouch = 0.17;
+        keys[5].hy = 1.9;
+      }
+      return keys;
     }
     case 'serve':
-      keys = [
-        K(0, 0.3, 1.75, 2.7, -0.15, 2.2, 0.5, -0.1, 0.18, 0),
-        K(c, 0.14, 2.5, 0.1, -0.3, 1.5, -0.1, 0.08, 0, 0.18),
-        K(c + (1 - c) * 0.35, -0.1, 1.8, -1.4, -0.2, 1.25, -0.5, 0.06, 0.03, 0.1),
-        K(1, -0.3, 1.15, -2.0, 0, 1.05, -0.7, 0.04, 0.05, 0),
+      return [
+        K(0, { hx: 0.4, hy: 1.72, ang: 2.6, ox: -0.12, oy: 2.15, twist: 0.5, lean: -0.1, crouch: 0.2, shift: -0.04, fd: -0.45, ofd: 0.9, grip: 0 }),
+        K(c * 0.5, { hx: 0.3, hy: 1.38, ang: 3.0, ox: -0.2, oy: 1.9, twist: 0.6, lean: -0.12, crouch: 0.24, fd: -0.7, ofd: 0.8, grip: 0 }),
+        K(c, { hx: 0.14, hy: 2.5, ang: 0.1, ox: -0.3, oy: 1.5, twist: -0.1, lean: 0.08, crouch: 0, lift: 0.2, shift: 0.06, fd: 0.3, ofd: 0.5, grip: 0 }),
+        K(c + (1 - c) * 0.3, { hx: -0.1, hy: 1.8, ang: -1.4, ox: -0.2, oy: 1.25, twist: -0.5, lean: 0.08, crouch: 0.03, lift: 0.12, fd: 0.4, ofd: 0.6, grip: 0 }),
+        K(1, { hx: -0.3, hy: 1.15, ang: -2.0, ox: 0, oy: 1.05, twist: -0.7, lean: 0.04, crouch: 0.06, lift: 0, fd: 0.3, ofd: 0.8, grip: 0.4 }),
       ];
-      twoHand = false;
-      break;
     case 'smash':
-      keys = [
-        K(0, 0.3, 1.85, 2.5, -0.1, 2.1, 0.4, -0.1, 0.1),
-        K(c, 0.12, 2.45, 0.1, -0.2, 1.6, -0.1, 0.08, 0, 0.12),
-        K(c + (1 - c) * 0.4, -0.15, 1.6, -1.5, -0.1, 1.3, -0.5, 0.05, 0.03, 0.05),
-        K(1, -0.3, 1.2, -2.0, 0, 1.05, -0.7, 0.03, 0.05, 0),
+      return [
+        K(0, { hx: 0.3, hy: 1.85, ang: 2.5, ox: -0.1, oy: 2.1, twist: 0.4, lean: -0.1, crouch: 0.1, fd: -0.4, ofd: 0.8, grip: 0 }),
+        K(c * 0.5, { hx: 0.35, hy: 1.5, ang: 2.9, ox: -0.15, oy: 2.0, twist: 0.55, lean: -0.1, crouch: 0.14, fd: -0.6, ofd: 0.8, grip: 0 }),
+        K(c, { hx: 0.12, hy: 2.45, ang: 0.1, ox: -0.2, oy: 1.6, twist: -0.1, lean: 0.08, crouch: 0, lift: 0.12, fd: 0.3, ofd: 0.5, grip: 0 }),
+        K(c + (1 - c) * 0.4, { hx: -0.15, hy: 1.6, ang: -1.5, ox: -0.1, oy: 1.3, twist: -0.5, lean: 0.05, crouch: 0.03, lift: 0.05, fd: 0.4, ofd: 0.5, grip: 0 }),
+        K(1, { hx: -0.3, hy: 1.2, ang: -2.0, ox: 0, oy: 1.05, twist: -0.7, lean: 0.03, crouch: 0.05, fd: 0.3, ofd: 0.8, grip: 0.4 }),
       ];
-      twoHand = false;
-      break;
-    default:
-      keys = [
-        K(0, 0.3, 1.0, 0.8, 0.12, 1.0, 0, 0, 0.07),
-        K(tb, 0.55, 1.2, 1.0, 0.05, 1.2, 0.3, 0, 0.1),
-        K(c, 0.55, 1.22, 0.5, 0.1, 1.15, 0, 0.03, 0.1),
-        K(tf, 0.4, 1.15, 0.3, 0.12, 1.1, -0.1, 0.03, 0.08),
-        K(1, 0.3, 1.05, 0.7, 0.12, 1.0, 0, 0, 0.07),
+    default: {
+      // Volea compacta, de dreta o de revés segons el costat de la pilota
+      const sg = side;
+      const off = sg > 0 ? -0.25 : 0.4;
+      return [
+        K(0),
+        K(tb, { hx: 0.5 * sg, hy: 1.22, ang: 1.05 * sg, ox: off, oy: 1.3, twist: 0.3 * sg, crouch: 0.1, fd: -0.1, ofd: 0.7, grip: 0.2 }),
+        K(c, { hx: 0.55 * sg, hy: 1.2, ang: 0.5 * sg, ox: off, oy: 1.28, twist: -0.05 * sg, lean: 0.06, crouch: 0.12, shift: 0.06 * sg, fd: 0.8, ofd: 0.7, grip: 0.2 }),
+        K(tf, { hx: 0.42 * sg, hy: 1.15, ang: 0.3 * sg, ox: off, oy: 1.2, twist: -0.1 * sg, lean: 0.05, crouch: 0.1, fd: 0.8, ofd: 0.7, grip: 0.4 }),
+        K(1),
       ];
-      twoHand = false;
+    }
   }
-  return { keys, twoHand };
 }
+
+/** Poses d'emoció (celebracions i decepcions). */
+function emoteKey(kind: EmoteKind, t: number): Key {
+  const s = Math.sin;
+  switch (kind) {
+    case 'fist': {
+      const hop = t < 0.7 ? Math.abs(s(t * 7)) * 0.05 : 0;
+      return K(0, { hx: 0.34, hy: 0.78, ang: 0.7, ox: -0.28, oy: 1.9 + 0.1 * s(t * 13), twist: -0.2, lean: -0.06, crouch: 0.05, lift: hop, fd: 0.8, ofd: 0.2, grip: 0 });
+    }
+    case 'arms': {
+      const j = t < 1.1 ? Math.abs(s(t * 5.2)) : 0;
+      const w = s(t * 9) * 0.05;
+      return K(0, { hx: 0.5 + w, hy: 2.05, ang: -0.2, ox: -0.5 - w, oy: 2.1, lean: -0.08, crouch: 0.03, lift: 0.16 * j, fd: 0.5, ofd: 0.5, grip: 0 });
+    }
+    case 'win': {
+      const j = t < 1.2 ? Math.abs(s(t * 5.2)) : 0;
+      const w = s(t * 6);
+      return K(0, { hx: 0.52, hy: 2.0 + 0.05 * w, ang: -0.4 + 0.2 * w, ox: -0.5, oy: 2.0 - 0.05 * w, lean: -0.1, crouch: 0.03, lift: 0.2 * j + 0.012 * Math.abs(s(t * 4)), fd: 0.5, ofd: 0.5, grip: 0 });
+    }
+    case 'slump':
+      return K(0, { hx: 0.3, hy: 0.62, ang: 2.75, ox: -0.22, oy: 0.7, twist: 0.1, lean: 0.13 + 0.015 * s(t * 3), crouch: 0.03, fd: 0.6, ofd: 0.6, grip: 0 });
+    case 'shake':
+      return K(0, { hx: 0.52, hy: 0.95, ang: 0.95 + 0.15 * s(t * 15), ox: -0.34, oy: 1.02, twist: 0.25 * s(t * 9), lean: 0.04, crouch: 0.06, fd: 0.4, ofd: -0.4, grip: 0 });
+    default:
+      return K(0, { hx: 0.28, hy: 0.58, ang: 2.9, ox: -0.12, oy: 0.62, lean: 0.2, crouch: 0.1, fd: 0.6, ofd: 0.6, grip: 0 });
+  }
+}
+
+const RECOV = 0.42;
+const SPLIT_DUR = 0.22;
 
 /** Pose d'un jugador en l'instant actual. */
 export function poseFor(p: Player, time: number, tossBallZ: number | null): Pose {
   const st = p.def.style;
+  const mir = p.rightX; // costat dominant (±1) en x de pantalla
   const vr = clamp(p.speed / 7, 0, 1.4);
   const mv = p.speed > 0.5;
-  const sw = p.swing;
+  const sw = p.swing && p.swing.t < p.swing.dur ? p.swing : null;
   const phase = p.runPhase;
 
-  let key: Key = READY;
-  let twoHand = true;
-
-  if (sw && sw.t < sw.dur) {
-    const { keys, twoHand: th } = strokeKeys(sw.stroke, sw.variant, sw.contactAt / sw.dur, st);
-    key = sampleKeys(keys, sw.t / sw.dur);
-    twoHand = th;
-  } else if (p.tossing && tossBallZ !== null) {
-    key = K(0, 0.34, 1.35, 2.3, -0.12, clamp(tossBallZ + 0.1, 1.3, 2.4), 0.2, -0.04, 0.1);
-    twoHand = false;
+  // Pose base: cursa amb bracejament o repòs amb respiració
+  let base: Key;
+  if (mv) {
+    const s = Math.sin(phase);
+    const run = clamp(vr * 1.3, 0, 1);
+    base = K(0, {
+      hx: 0.34 + 0.05 * Math.cos(phase),
+      hy: 1.0 - 0.05 * s * run,
+      ang: 0.9 - 0.15 * s * run,
+      ox: -0.18 - 0.08 * s * run,
+      oy: 1.0 + 0.24 * s * run,
+      lean: 0.09 * vr,
+      crouch: 0.07 + 0.07 * vr,
+      fd: 1,
+      ofd: s * run,
+      grip: clamp(1 - run * 1.6, 0, 1),
+    });
   } else {
-    // Recuperació suau després del cop
-    const since = p.sinceHit;
-    const lastDur = 0.45;
-    if (since < lastDur + 0.3 && p.lastStroke !== 'serve') {
-      const f = clamp((since - lastDur) / 0.3, 0, 1);
-      const { keys } = strokeKeys(p.lastStroke, p.lastVariant, 0.3, st);
-      key = lerpKey(keys[keys.length - 1], READY, smoothstep(f));
-      twoHand = false;
+    const b = Math.sin(time * 3.1 + p.idx);
+    base = K(0, { hy: 1.0 + 0.012 * b, shift: 0.015 * Math.sin(time * 1.7 + p.idx * 2), crouch: 0.07 + 0.006 * b });
+  }
+
+  let key: Key = base;
+  if (sw) {
+    const keys = strokeKeys(sw.stroke, sw.variant, sw.contactAt / sw.dur, st, sw.side);
+    key = sampleKeys(keys, sw.t / sw.dur);
+    if (sw.stroke !== 'serve' && sw.stroke !== 'smash' && sw.t < 0.06) key = lerpKey(base, key, smoothstep(sw.t / 0.06));
+  } else if (p.tossing && tossBallZ !== null) {
+    // Llançament: el braç lliure segueix la pilota i el de la raqueta puja a "trofeu"
+    const g = clamp((tossBallZ - 1) / 1.4, 0, 1);
+    key = K(0, {
+      hx: 0.34 + 0.06 * g, hy: 1.3 + 0.42 * g, ang: 2.3 + 0.3 * g,
+      ox: -0.12, oy: clamp(tossBallZ + 0.1, 1.3, 2.4),
+      twist: 0.2 + 0.3 * g, lean: -0.04 - 0.06 * g, crouch: 0.1 + 0.1 * g,
+      fd: -0.2 - 0.25 * g, ofd: 0.9, grip: 0,
+    });
+  } else if (p.serveStance && tossBallZ !== null) {
+    // Preparat per servir: bota la pilota amb la mà lliure
+    key = K(0, {
+      hx: 0.2, hy: 0.95, ang: 0.6, ox: -0.05, oy: clamp(tossBallZ + 0.1, 0.7, 1.1),
+      twist: 0.15, crouch: 0.08 + (0.95 - tossBallZ) * 0.15, fd: 1, ofd: 1, grip: 0,
+    });
+  } else {
+    if (p.idleT < RECOV) {
+      const ks = strokeKeys(p.lastStroke, p.lastVariant, 0.3, st, p.lastSide);
+      key = lerpKey(ks[ks.length - 1], base, smoothstep(clamp(p.idleT / RECOV, 0, 1)));
     }
-    if (mv && since > lastDur + 0.3) {
-      // Bracejament en córrer
-      const s = Math.sin(phase);
-      key = { ...READY, hy: 1.0 + 0.05 * s, hx: 0.3 + 0.05 * Math.cos(phase), oy: 1.0 - 0.06 * s, ox: 0.12 - 0.04 * s, lean: 0.06 * vr, crouch: 0.07 + 0.06 * vr };
-    } else if (!mv && since > lastDur + 0.3) {
-      key = { ...READY, hy: 1.0 + 0.012 * Math.sin(time * 3.1 + p.idx), oy: 1.0 + 0.012 * Math.sin(time * 3.1 + p.idx) };
+    if (p.splitT > 0) {
+      const u = 1 - p.splitT / SPLIT_DUR;
+      key = { ...key, lift: key.lift + 0.1 * Math.sin(Math.PI * u), crouch: key.crouch + 0.08 * Math.max(0, u - 0.7) / 0.3 };
+    }
+    if (p.emote) {
+      const ek = emoteKey(p.emote, p.emoteT);
+      const fin = smoothstep(clamp(p.emoteT / 0.16, 0, 1));
+      const fout = p.emoteDur < 50 ? smoothstep(clamp((p.emoteDur - p.emoteT) / 0.3, 0, 1)) : 1;
+      key = lerpKey(key, ek, fin * fout);
     }
   }
 
   // Cames
   const lat = p.speed > 0.3 ? p.vx / p.speed : 0;
   const dep = p.speed > 0.3 ? p.vy / p.speed : 0;
-  let footL: [number, number] = [-0.14, 0];
-  let footR: [number, number] = [0.14, 0];
+  const footL: [number, number] = [-0.14, 0];
+  const footR: [number, number] = [0.14, 0];
   let crouch = key.crouch;
   let bob = 0;
   if (mv) {
@@ -222,40 +291,37 @@ export function poseFor(p: Player, time: number, tossBallZ: number | null): Pose
     const b = Math.sin(phase + Math.PI);
     const liftA = Math.max(0, a) * 0.2 * vr * st.stride;
     const liftB = Math.max(0, b) * 0.2 * vr * st.stride;
-    footL = [-0.14 + lat * 0.3 * Math.cos(phase), liftA + dep * 0.07 * Math.cos(phase)];
-    footR = [0.14 + lat * 0.3 * Math.cos(phase + Math.PI), liftB + dep * 0.07 * Math.cos(phase + Math.PI)];
+    footL[0] = -0.14 + lat * 0.3 * Math.cos(phase);
+    footL[1] = liftA + dep * 0.07 * Math.cos(phase);
+    footR[0] = 0.14 + lat * 0.3 * Math.cos(phase + Math.PI);
+    footR[1] = liftB + dep * 0.07 * Math.cos(phase + Math.PI);
     bob = Math.abs(Math.sin(phase)) * 0.035 * vr;
   } else {
     bob = 0.01 * Math.sin(time * 3.1 + p.idx);
   }
   if (p.slide > 0.1) {
     const s = p.slide;
-    footL[0] -= 0.34 * s * (lat >= 0 ? 1 : 1);
+    footL[0] -= 0.34 * s;
     footR[0] += 0.34 * s;
     crouch += 0.2 * s;
   }
-  if (sw && sw.t < sw.dur && sw.stroke !== 'serve' && sw.stroke !== 'smash') {
-    // base d'obertura segons el cop
+  if (sw && sw.stroke !== 'serve' && sw.stroke !== 'smash') {
     const open = sw.stroke === 'bh' ? -1 : 1;
     footL[0] += -0.05 + open * 0.02;
     footR[0] += 0.05 + open * 0.02;
+    if (sw.stroke === 'fh' || sw.stroke === 'bh') {
+      // El peu de darrere s'aixeca (peu a la punta) quan el pes passa endavant
+      const u = sw.t / sw.dur;
+      const c = sw.contactAt / sw.dur;
+      const k = smoothstep(clamp(((u - c) / (1 - c)) * 1.6, 0, 1)) * (1 - smoothstep(clamp((u - 0.85) / 0.15, 0, 1)));
+      const rearRight = sw.stroke === 'fh' ? mir > 0 : mir < 0;
+      const rear = rearRight ? footR : footL;
+      rear[1] += 0.09 * k;
+    }
   }
-  return {
-    hx: key.hx,
-    hy: key.hy,
-    ang: key.ang,
-    ox: key.ox,
-    oy: key.oy,
-    twist: key.twist,
-    lean: key.lean,
-    crouch,
-    lift: key.lift,
-    twoHand,
-    footL,
-    footR,
-    bodyDx: lat * 0.06 * vr,
-    bob,
-  };
+  const { t: _t, ...rest } = key;
+  void _t;
+  return { ...rest, crouch, footL, footR, bodyDx: lat * 0.06 * vr, bob };
 }
 
 /** Cinemàtica inversa de dos ossos; retorna el colze. */
@@ -300,13 +366,14 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   const hipY = (0.95 - crouch * 0.55) * hScale + lift;
   const shoulderY = (1.5 - crouch * 0.9 - pose.lean * 0.35) * hScale + lift;
   const sw = (0.44 * b * (1 - 0.35 * Math.abs(pose.twist))) * (0.9 + 0.1 * hScale);
-  const bodyDx = pose.bodyDx + pose.twist * 0.02 + pose.lean * 0.05;
+  const bodyDx = pose.bodyDx + pose.twist * 0.02 + pose.lean * 0.05 + mir * pose.shift;
   const tkW = (m: number) => Math.max(1, Math.round(m * s));
 
   const skin = look.skin;
   const skinSh = look.skinShade;
   const shirt = look.shirt;
   const shirtDark = shade(shirt, 0.82);
+  const shirtEdge = shade(shirt, 0.55);
   const shortsC = look.shorts;
 
   // --- Cames ---
@@ -362,36 +429,43 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   const L2 = 0.3 * hScale;
   const armT = tkW(0.095 * b * hScale);
 
-  // posició de mans
+  // posició de mans (la mà lliure s'acosta a la raqueta segons `grip`)
   const dhx = mir * pose.hx;
   const dhy = pose.hy * hScale + lift;
-  let ohx = mir * pose.ox;
-  let ohy = pose.oy * hScale + lift;
-  if (pose.twoHand) {
-    ohx = dhx - mir * 0.04;
-    ohy = dhy - 0.04;
-  }
+  const fox = mir * pose.ox;
+  const foy = pose.oy * hScale + lift;
+  const ohx = fox + (dhx - mir * 0.04 - fox) * pose.grip;
+  const ohy = foy + (dhy - 0.04 - foy) * pose.grip;
+  // Profunditat: davant del cos és cap on mira el jugador (lluny de la càmera en vista d'esquena)
+  const offFd = pose.ofd + (pose.fd - pose.ofd) * pose.grip;
+  const domBehind = back ? pose.fd > 0 : pose.fd < 0;
+  const offBehind = back ? offFd > 0 : offFd < 0;
 
   const drawArm = (sh: [number, number], hx: number, hy: number, dir: number): void => {
     const el = ik(sh[0], sh[1], hx, hy, L1, L2, dir);
     const sleeve = look.sleeveless ? skin : shirt;
-    // braç superior
-    line(ctx, X(sh[0]), Y(sh[1]), X(el[0]), Y(el[1]), armT, sleeve);
+    const foreT = Math.max(1, armT - (s < 16 ? 0 : 1));
+    const x0 = X(sh[0]), y0 = Y(sh[1]), x1 = X(el[0]), y1 = Y(el[1]), x2 = X(hx), y2 = Y(hy);
+    // contorn fosc: separa el braç del tors i el fa opac
+    line(ctx, x0, y0, x1, y1, armT + 2, shade(sleeve, 0.55));
+    line(ctx, x1, y1, x2, y2, foreT + 2, shade(skin, 0.6));
+    line(ctx, x0, y0, x1, y1, armT, sleeve);
     if (!look.sleeveless) {
-      // mànega curta: només 55% del braç és samarreta
+      // mànega curta: només 58% del braç és samarreta
       const mx = sh[0] + (el[0] - sh[0]) * 0.58;
       const my = sh[1] + (el[1] - sh[1]) * 0.58;
-      line(ctx, X(mx), Y(my), X(el[0]), Y(el[1]), armT, skin);
-      line(ctx, X(sh[0]), Y(sh[1]), X(mx), Y(my), armT, sleeve);
+      line(ctx, X(mx), Y(my), x1, y1, armT, skin);
+      line(ctx, x0, y0, X(mx), Y(my), armT, sleeve);
     }
-    line(ctx, X(el[0]), Y(el[1]), X(hx), Y(hy), Math.max(1, armT - (s < 16 ? 0 : 1)), skin);
-    px(ctx, X(hx), Y(hy), skinSh, Math.max(1, tkW(0.07)));
+    line(ctx, x1, y1, x2, y2, foreT, skin);
+    px(ctx, x2, y2, skinSh, Math.max(1, tkW(0.07)));
   };
-
-  // Braç no dominant: a una mà va per darrere del cos; a dues mans agafa la raqueta davant del cos
-  // (tant d'esquena com de cara), així mai queda tapat pel tors.
   const offDir = mir * (back ? 1 : -1);
-  if (!pose.twoHand) drawArm(shoulderOff, ohx, ohy, offDir);
+  const domDir = -offDir;
+
+  // Braços per darrere del tors (mà cap endavant) abans de dibuixar-lo
+  if (offBehind) drawArm(shoulderOff, ohx, ohy, offDir);
+  if (domBehind) drawArm(shoulderDom, dhx, dhy, domDir);
 
   // --- Tors ---
   const torsoBottom = hipY + 0.05;
@@ -402,7 +476,11 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
     const w = (0.3 * b + (sw - 0.3 * b) * (1 - f) * 1.05) * 1;
     const cx = bodyDx * (1 - f * 0.5);
     const col = f > 0.8 ? look.shirtTrim : f > 0.45 ? shirt : shirt;
-    rect(ctx, X(cx - w / 2), Y(y), Math.max(2, Math.round(w * s)), 1, col);
+    const rw = Math.max(2, Math.round(w * s));
+    const rx = X(cx - w / 2);
+    rect(ctx, rx, Y(y), rw, 1, col);
+    rect(ctx, Math.round(rx) - 1, Y(y), 1, 1, shirtEdge);
+    rect(ctx, Math.round(rx) + rw, Y(y), 1, 1, shirtEdge);
   }
   // detalls del tors
   if (back) {
@@ -467,9 +545,9 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
     }
   }
 
-  // --- Braç dominant i raqueta ---
-  if (pose.twoHand) drawArm(shoulderOff, ohx, ohy, offDir);
-  drawArm(shoulderDom, dhx, dhy, -mir * (back ? 1 : -1));
+  // --- Braços davant del tors i raqueta ---
+  if (!offBehind) drawArm(shoulderOff, ohx, ohy, offDir);
+  if (!domBehind) drawArm(shoulderDom, dhx, dhy, domDir);
   drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale);
 }
 

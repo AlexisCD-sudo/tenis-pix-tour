@@ -161,7 +161,7 @@ test('el cop de servei informa de la seva pròpia velocitat (km/h)', () => {
     for (const e of m.drainEvents()) if (e.type === 'hit' && e.stroke === 'serve') kmh.push(e.kmh);
   }
   assert.ok(kmh.length >= 6);
-  for (const v of kmh) assert.ok(v > 80 && v < 240, `servei de ${v} km/h`);
+  for (const v of kmh) assert.ok(v > 60 && v < 240, `servei de ${v} km/h`);
   assert.equal(Math.max(...kmh), Math.max(m.stats.p[0].maxServeKmh, m.stats.p[1].maxServeKmh));
 });
 

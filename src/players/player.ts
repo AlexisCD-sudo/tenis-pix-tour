@@ -5,6 +5,8 @@ import { DifficultyParams } from '../ai/difficulty';
 
 export type HitKey = 'flat' | 'slice' | 'top' | 'lob';
 export type Stroke = 'fh' | 'bh' | 'vol' | 'smash' | 'serve';
+/** Emocions després d'un punt: puny, braços amunt, victòria, decepció i derrota. */
+export type EmoteKind = 'fist' | 'arms' | 'win' | 'slump' | 'shake' | 'lose';
 
 /** Ordre que un controlador (humà o IA) dóna a un jugador en cada pas. */
 export interface Intent {
@@ -30,6 +32,8 @@ export interface SwingState {
   dur: number;
   done: boolean; // s'ha executat el contacte (cop o fallada)
   hitBall: boolean;
+  /** Costat de la pilota respecte a la mà dominant: +1 dreta, -1 revés (per a les voleas). */
+  side: 1 | -1;
   aimX: number;
   aimY: number;
 }
@@ -54,6 +58,17 @@ export class Player {
   lastVariant: HitKey = 'flat';
   /** Estat de servei. */
   tossing = false;
+  /** Temps des que va acabar l'últim cop (per a la recuperació). */
+  idleT = 10;
+  lastSide: 1 | -1 = 1;
+  /** Petit salt de preparació quan el rival colpeja (split step). */
+  splitT = 0;
+  /** És el servidor esperant (bota la pilota abans de llançar-la). */
+  serveStance = false;
+  /** Emoció activa (celebració o decepció). */
+  emote: EmoteKind | null = null;
+  emoteT = 0;
+  emoteDur = 0;
   /** Slide: factor 0..1 si llisca. */
   slide = 0;
   stepAcc = 0;
@@ -105,7 +120,13 @@ export class Player {
     return this.swing !== null && this.swing.t < this.swing.dur;
   }
 
-  beginSwing(stroke: Stroke, variant: HitKey, aimX: number, aimY: number): void {
+  startEmote(kind: EmoteKind, dur: number): void {
+    this.emote = kind;
+    this.emoteT = 0;
+    this.emoteDur = dur;
+  }
+
+  beginSwing(stroke: Stroke, variant: HitKey, aimX: number, aimY: number, side: 1 | -1 = 1): void {
     const s = this.def.style.swingSpeed;
     let contactAt = 0.14;
     let windowEnd = 0.28;
@@ -136,9 +157,12 @@ export class Player {
     contactAt /= s;
     windowEnd /= s;
     dur /= s;
-    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, aimX, aimY };
+    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, side, aimX, aimY };
     this.lastStroke = stroke;
     this.lastVariant = variant;
+    this.lastSide = side;
+    this.emote = null;
+    this.splitT = 0;
     this.sinceHit = 0;
     this.stamina = Math.max(0, this.stamina - 0.0012 / (0.5 + this.staminaStat));
   }
@@ -151,7 +175,15 @@ export class Player {
       if (this.swing.t >= this.swing.dur) {
         this.swing = null;
         this.swingCool = 0.05;
+        this.idleT = 0;
       }
+    } else {
+      this.idleT += dt;
+    }
+    if (this.splitT > 0) this.splitT = Math.max(0, this.splitT - dt);
+    if (this.emote) {
+      this.emoteT += dt;
+      if (this.emoteT >= this.emoteDur) this.emote = null;
     }
     if (this.swingCool > 0) this.swingCool -= dt;
 

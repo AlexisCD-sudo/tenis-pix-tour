@@ -30,6 +30,7 @@ export function SpritePreview({ def, s = 30, width = 56, height = 72, scale = 3,
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       t += dt;
+      if (jump && !p.emote) p.startEmote('win', 999);
       p.update(dt, NO_INTENT);
       if (animate && t > nextSwing && !p.swing) {
         const strokes = ['fh', 'bh'] as const;
@@ -38,7 +39,6 @@ export function SpritePreview({ def, s = 30, width = 56, height = 72, scale = 3,
       }
       ctx.clearRect(0, 0, c.width, c.height);
       const pose = poseFor(p, t, null);
-      if (jump) pose.lift += Math.abs(Math.sin(t * 5)) * 0.35;
       drawPlayerSprite(ctx, { look: def.look, style: def.style, view: 'front', s, x: width / 2, y: height - 8, pose });
       // ombra
       ctx.fillStyle = 'rgba(0,0,0,0.35)';

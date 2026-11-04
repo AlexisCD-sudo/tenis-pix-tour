@@ -408,7 +408,7 @@ export class Renderer {
   private drawPlayer(ctx: Ctx, m: Match, pl: Player): void {
     const p = this.proj;
     project(pl.x, pl.y, 0, p);
-    const tossZ = pl.tossing ? m.ball.z : null;
+    const tossZ = pl.tossing || pl.serveStance ? m.ball.z : null;
     const pose = poseFor(pl, this.time, tossZ);
     drawPlayerSprite(ctx, {
       look: pl.def.look,
