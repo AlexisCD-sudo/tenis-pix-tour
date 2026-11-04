@@ -7,7 +7,8 @@ import { Crowd } from './crowd';
 import { buildBackground, BOARD_Y } from './court';
 import { drawText, textWidth } from './font';
 import { H, W, newProj, project } from './projection';
-import { drawPlayerSprite, drawSittingOfficial, poseFor } from './sprites';
+import { drawSittingOfficial, poseFor } from './sprites';
+import { drawPlayerFinished } from './finish';
 
 interface Particle {
   x: number;
@@ -94,7 +95,9 @@ export class Renderer {
   private marks: Mark[] = [];
   private popups: Popup[] = [];
   private floaters: Floater[] = [];
+  private racketTrails: { x: number; y: number }[][] = [[], []];
   private teamsSet = false;
+  private mref: Match | null = null;
   private lastMeterFull: [boolean, boolean] = [false, false];
   private trail: { sx: number; sy: number }[] = [];
   private judges: Judge[] = [
@@ -205,6 +208,21 @@ export class Renderer {
           }
           if (e.stroke === 'smash' || (e.stroke === 'serve' && e.power > 0.9)) this.shake = 0.12;
           this.hitFeedback(e);
+          break;
+        }
+        case 'step': {
+          // Pols als peus en cada pas (més si llisca)
+          const pl = this.mref?.players[e.player];
+          if (pl) {
+            const n = e.slide ? 5 : 2;
+            for (let i = 0; i < n; i++) {
+              this.particles.push({
+                x: pl.x + (Math.random() - 0.5) * 0.3, y: pl.y + (Math.random() - 0.5) * 0.2, z: 0.03,
+                vx: (Math.random() - 0.5) * 1.4 - pl.vx * 0.12, vy: (Math.random() - 0.5) * 1.0 - pl.vy * 0.12, vz: 0.5 + Math.random() * 0.8,
+                life: 0, max: e.slide ? 0.4 : 0.26, color: i % 2 ? '#dfe9fb' : '#b8c9ea',
+              });
+            }
+          }
           break;
         }
         case 'fault':
@@ -342,6 +360,7 @@ export class Renderer {
   draw(m: Match, dt: number): void {
     const ctx = this.ctx;
     this.time += dt;
+    this.mref = m;
     if (!this.teamsSet) {
       this.teamsSet = true;
       this.crowd.setTeams(m.players[0].def.look.shirt, m.players[1].def.look.shirt);
@@ -509,7 +528,7 @@ export class Renderer {
     project(pl.x, pl.y, 0, p);
     const tossZ = pl.tossing || pl.serveStance ? m.ball.z : null;
     const pose = poseFor(pl, this.time, tossZ);
-    drawPlayerSprite(ctx, {
+    const fin = drawPlayerFinished(ctx, {
       look: pl.def.look,
       style: pl.def.style,
       view: pl.side > 0 ? 'back' : 'front',
@@ -518,6 +537,26 @@ export class Renderer {
       y: p.sy,
       pose,
     });
+    this.updateRacketTrail(ctx, pl, fin.racketX, fin.racketY);
+  }
+
+  /** Estela de la raqueta durant el cop (arc de moviment). */
+  private updateRacketTrail(ctx: Ctx, pl: Player, rx: number, ry: number): void {
+    const tr = this.racketTrails[pl.idx];
+    const sw = pl.swing;
+    const fast = sw && sw.stroke !== 'vol' ? sw.t > sw.contactAt * 0.4 && sw.t < sw.dur * 0.8 : sw ? sw.t < sw.dur * 0.7 : false;
+    if (fast) {
+      tr.push({ x: rx, y: ry });
+      if (tr.length > 9) tr.shift();
+    } else if (tr.length) {
+      tr.shift();
+      if (tr.length) tr.shift();
+    }
+    for (let i = 1; i < tr.length; i++) {
+      const f = i / tr.length;
+      const c = f < 0.35 ? '#5f86c8' : f < 0.7 ? '#a8c8ff' : '#ffffff';
+      line(ctx, tr[i - 1].x, tr[i - 1].y, tr[i].x, tr[i].y, f > 0.6 ? 2 : 1, c);
+    }
   }
 
   private drawBall(ctx: Ctx, m: Match): void {

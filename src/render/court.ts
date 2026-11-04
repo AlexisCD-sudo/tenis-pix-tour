@@ -1,6 +1,7 @@
 import { COURT } from '../engine/constants';
 import { BAYER4, hexToRgb } from './pixel';
 import { CAM, H, W, groundAt, rayDir } from './projection';
+import { plotText, textWidth } from './font';
 
 /**
  * Fons estàtic: pista, tanques i grades. Es calcula UNA vegada amb un traçat
@@ -15,6 +16,33 @@ const SIDE_START = 10.2;
 
 const INNER = ['#3d74c6', '#3870c0'];
 const OUTER = ['#2f8c66', '#2b8461'];
+
+interface Sponsor {
+  bg: RGB;
+  fg: RGB;
+  w: number;
+  bits: Uint8Array;
+}
+
+/** Cartells publicitaris amb text real (lletra 3x5), per a la tanca del fons. */
+function buildSponsors(): Sponsor[] {
+  const defs: [string, string, string][] = [
+    ['PIXELBANK', '#0b2a6e', '#ffe066'],
+    ['NEOSERVE', '#b3122b', '#ffffff'],
+    ['RACKETX', '#0b6e4f', '#d4ff2a'],
+    ['ACE FUEL', '#e0a800', '#1a1030'],
+    ['TOPSPIN', '#4b1f8f', '#8cf0ff'],
+    ['SMASH COLA', '#d8401a', '#ffffff'],
+  ];
+  return defs.map(([name, bg, fg]) => {
+    const w = textWidth(name);
+    const bits = new Uint8Array(w * 5);
+    plotText(name, (x, y) => {
+      if (x >= 0 && x < w && y >= 0 && y < 5) bits[y * w + x] = 1;
+    });
+    return { bg: hexToRgb(bg), fg: hexToRgb(fg), w, bits };
+  });
+}
 
 function hash(a: number, b: number): number {
   let h = Math.imul(a * 374761393 + b * 668265263, 1274126177);
@@ -57,7 +85,7 @@ export function buildBackground(): HTMLCanvasElement {
   const data = img.data;
   const innerRgb = INNER.map(hexToRgb);
   const outerRgb = OUTER.map(hexToRgb);
-  const boardCols: RGB[] = ['#0b2a6e', '#b3122b', '#0b6e4f', '#e0a800', '#4b1f8f'].map(hexToRgb);
+  const sponsors = buildSponsors();
   const seatCols: RGB[] = ['#3b2d6e', '#4c3b86', '#2f3f7a', '#5a2f6e'].map(hexToRgb);
 
   for (let sy = 0; sy < H; sy++) {
@@ -131,27 +159,32 @@ export function buildBackground(): HTMLCanvasElement {
             rgb = shadeRgb(rgb, 0.92 + 0.08 * light);
           } else {
             const cols = inside ? innerRgb : outerRgb;
-            const n = hash(Math.floor(wx * 3), Math.floor(wy * 3));
-            const base = cols[n > 0.55 ? 1 : 0];
+            const n = hash(Math.floor(wx * 1.2), Math.floor(wy * 1.2));
+            const base = cols[n > 0.6 ? 1 : 0];
+            // gra fi de pintura acrílica (per píxel de pantalla)
+            const gr = hash(sx * 7 + 3, sy * 13 + 5);
             // tramat de llum ordenat
             const q = light + (bayer - 0.5) * 0.1;
-            rgb = shadeRgb(base, q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76);
+            rgb = shadeRgb(base, (q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76) * (gr > 0.93 ? 0.93 : gr < 0.05 ? 1.05 : 1));
             // franja de joc una mica més clara al voltant de la xarxa (efecte focus)
           }
           break;
         }
         case 'board': {
-          const seg = Math.floor((wx + 40) / 2.6);
-          let c = boardCols[seg % boardCols.length];
+          const seg = Math.floor((wx + 40) / 3.4);
+          const sp = sponsors[((seg % sponsors.length) + sponsors.length) % sponsors.length];
+          let c = sp.bg;
           const zi = wz / 1.1;
-          // tira superior fosca i patró de "text" publicitari
+          // tira superior fosca i text publicitari llegible
           if (zi > 0.9) c = [20, 24, 40];
+          else if (zi < 0.08) c = shadeRgb(sp.bg, 0.6);
           else {
-            const lx = (wx + 40) / 2.6 - seg;
-            const bar = zi > 0.3 && zi < 0.62 && lx > 0.12 && lx < 0.88 && Math.floor(lx * 18) % 3 !== 2 && hash(seg, Math.floor(lx * 18)) > 0.25;
-            if (bar) c = [245, 245, 250];
+            const lx = (wx + 40) / 3.4 - seg;
+            const tx = Math.floor(((lx - 0.06) / 0.88) * sp.w);
+            const ty = Math.floor(((0.88 - zi) / 0.68) * 5);
+            if (tx >= 0 && tx < sp.w && ty >= 0 && ty < 5 && sp.bits[ty * sp.w + tx]) c = sp.fg;
           }
-          rgb = shadeRgb(c, 0.9 + (bayer - 0.5) * 0.08);
+          rgb = shadeRgb(c, 0.95 + (bayer - 0.5) * 0.06);
           break;
         }
         case 'far': {

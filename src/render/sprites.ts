@@ -351,11 +351,13 @@ export interface DrawSpec {
 }
 
 /** Dibuixa un tennista. */
-export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
+export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): { x: number; y: number } {
   const { look, style, view, s, pose } = d;
   const mir = (view === 'back' ? 1 : -1) * (style.lefty ? -1 : 1); // costat dominant
   const back = view === 'back';
-  const hScale = look.height / 1.85;
+  // Cos una mica més gran (estil arcade); les mans i la raqueta mantenen l'alçada física
+  const hScale0 = look.height / 1.85;
+  const hScale = hScale0 * 1.16;
   const b = look.build;
 
   // Transformacions
@@ -365,7 +367,7 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   const crouch = pose.crouch;
   const hipY = (0.95 - crouch * 0.55) * hScale + lift;
   const shoulderY = (1.5 - crouch * 0.9 - pose.lean * 0.35) * hScale + lift;
-  const sw = (0.44 * b * (1 - 0.35 * Math.abs(pose.twist))) * (0.9 + 0.1 * hScale);
+  const sw = (0.5 * b * (1 - 0.3 * Math.abs(pose.twist))) * (0.9 + 0.1 * hScale);
   const bodyDx = pose.bodyDx + pose.twist * 0.02 + pose.lean * 0.05 + mir * pose.shift;
   const tkW = (m: number) => Math.max(1, Math.round(m * s));
 
@@ -393,8 +395,8 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
     const kneeBend = 0.05 + crouch * 0.4;
     const kx = (h[0] + f[0]) / 2 + (i === 0 ? -1 : 1) * kneeBend;
     const ky = (h[1] + f[1]) / 2 + 0.03;
-    const thick = tkW(0.13 * b * hScale);
-    const thin = tkW(0.1 * b * hScale);
+    const thick = Math.max(2, tkW(0.165 * b * hScale));
+    const thin = Math.max(2, tkW(0.125 * b * hScale));
     // espinella: pell + mitjó + sabata
     line(ctx, X(kx), Y(ky), X(f[0]), Y(f[1]), thin, skin);
     const sockT = look.socks;
@@ -412,8 +414,8 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
       line(ctx, X(h[0]), Y(h[1]), X(tx), Y(ty), thick, shortsC);
     }
     // sabata
-    const sw2 = tkW(0.2 * b);
-    rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.09), sw2, Math.max(2, tkW(0.1)), look.shoes);
+    const sw2 = tkW(0.25 * b);
+    rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.11), sw2, Math.max(2, tkW(0.12)), look.shoes);
     rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.02), sw2, 1, shade(look.shoes, 0.6));
   }
 
@@ -427,13 +429,13 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   const shoulderDom: [number, number] = [mir * sw * 0.5 + bodyDx, shoulderY - 0.03];
   const L1 = 0.3 * hScale;
   const L2 = 0.3 * hScale;
-  const armT = tkW(0.095 * b * hScale);
+  const armT = Math.max(2, tkW(0.125 * b * hScale));
 
   // posició de mans (la mà lliure s'acosta a la raqueta segons `grip`)
   const dhx = mir * pose.hx;
-  const dhy = pose.hy * hScale + lift;
+  const dhy = pose.hy * hScale0 + lift;
   const fox = mir * pose.ox;
-  const foy = pose.oy * hScale + lift;
+  const foy = pose.oy * hScale0 + lift;
   const ohx = fox + (dhx - mir * 0.04 - fox) * pose.grip;
   const ohy = foy + (dhy - 0.04 - foy) * pose.grip;
   // Profunditat: davant del cos és cap on mira el jugador (lluny de la càmera en vista d'esquena)
@@ -496,7 +498,7 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   }
 
   // --- Cap ---
-  const headR = 0.105 * Math.pow(b, 0.3) * hScale;
+  const headR = 0.125 * Math.pow(b, 0.3) * hScale;
   const hx0 = bodyDx + pose.twist * 0.03 + pose.lean * 0.04;
   const hy0 = shoulderY + 0.14 + headR * 0.55 + pose.lean * 0.02;
   const cxp = X(hx0);
@@ -548,7 +550,7 @@ export function drawPlayerSprite(ctx: Ctx, d: DrawSpec): void {
   // --- Braços davant del tors i raqueta ---
   if (!offBehind) drawArm(shoulderOff, ohx, ohy, offDir);
   if (!domBehind) drawArm(shoulderDom, dhx, dhy, domDir);
-  drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale);
+  return drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale0);
 }
 
 function drawHair(ctx: Ctx, look: PlayerLook, cx: number, cy: number, rp: number, back: boolean, s: number): void {
@@ -586,7 +588,7 @@ function drawHair(ctx: Ctx, look: PlayerLook, cx: number, cy: number, rp: number
   void s;
 }
 
-function drawRacket(ctx: Ctx, hx: number, hy: number, ang: number, s: number, frame: string, hScale: number): void {
+function drawRacket(ctx: Ctx, hx: number, hy: number, ang: number, s: number, frame: string, hScale: number): { x: number; y: number } {
   const k = hScale * s;
   const dx = Math.sin(ang);
   const dy = -Math.cos(ang); // pantalla: y cap avall
@@ -613,6 +615,7 @@ function drawRacket(ctx: Ctx, hx: number, hy: number, ang: number, s: number, fr
       }
     }
   }
+  return { x: cx, y: cy };
 }
 
 /** Sprite petit de jutge de línia / ajudant (assegut). */

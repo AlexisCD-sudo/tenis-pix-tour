@@ -1,7 +1,8 @@
 // Full de sprites: totes les poses del tennista en vista d'esquena i de cara (per revisar les animacions).
 import { Player, Stroke, HitKey } from '../../src/players/player';
 import { ROSTER } from '../../src/players/roster';
-import { drawPlayerSprite, poseFor } from '../../src/render/sprites';
+import { drawPlayerFinished } from '../../src/render/finish';
+import { poseFor } from '../../src/render/sprites';
 
 const params = new URLSearchParams(location.search);
 const who = ROSTER[Number(params.get('p') ?? 1)];
@@ -57,7 +58,7 @@ views.forEach((view, vi) => {
         time = i;
       }
       const pose = poseFor(p, time, tossZ);
-      drawPlayerSprite(ctx, { look: who.look, style: who.style, view, s: S, x: ox + 30 + i * COLW + COLW / 2, y: ri * ROWH + ROWH - 14, pose });
+      drawPlayerFinished(ctx, { look: who.look, style: who.style, view, s: S, x: ox + 30 + i * COLW + COLW / 2, y: ri * ROWH + ROWH - 14, pose });
     }
   });
 });

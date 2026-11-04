@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { NO_INTENT, Player } from '../players/player';
 import { PlayerDef } from '../players/roster';
-import { drawPlayerSprite, poseFor } from '../render/sprites';
+import { drawPlayerFinished } from '../render/finish';
+import { poseFor } from '../render/sprites';
 
 interface Props {
   def: PlayerDef;
@@ -39,7 +40,7 @@ export function SpritePreview({ def, s = 30, width = 56, height = 72, scale = 3,
       }
       ctx.clearRect(0, 0, c.width, c.height);
       const pose = poseFor(p, t, null);
-      drawPlayerSprite(ctx, { look: def.look, style: def.style, view: 'front', s, x: width / 2, y: height - 8, pose });
+      drawPlayerFinished(ctx, { look: def.look, style: def.style, view: 'front', s, x: width / 2, y: height - 8, pose });
       // ombra
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(width / 2 - 8, height - 7, 16, 2);

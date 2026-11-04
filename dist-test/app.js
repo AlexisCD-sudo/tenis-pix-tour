@@ -21869,18 +21869,18 @@ var MENU_LEAD = [
   N
 ];
 var bassLine = (roots) => {
-  const out = [];
+  const out2 = [];
   for (const r of roots) {
-    for (let i = 0; i < 16; i++) out.push(i % 4 === 0 ? i % 8 === 0 ? r : r + 12 : N);
+    for (let i = 0; i < 16; i++) out2.push(i % 4 === 0 ? i % 8 === 0 ? r : r + 12 : N);
   }
-  return out;
+  return out2;
 };
 var arpLine = (chords) => {
-  const out = [];
+  const out2 = [];
   for (const c of chords) {
-    for (let i = 0; i < 16; i++) out.push(i % 2 === 0 ? c[i / 2 % c.length] : N);
+    for (let i = 0; i < 16; i++) out2.push(i % 2 === 0 ? c[i / 2 % c.length] : N);
   }
-  return out;
+  return out2;
 };
 var TRACKS = {
   menu: {
@@ -23162,8 +23162,8 @@ function reachOf(p) {
   return base + 0.25 * p.speedStat + (p.def.look.height - 1.85) * 0.6;
 }
 function idealContact(p, stroke) {
-  const off = stroke === "fh" ? 0.85 : stroke === "bh" ? -0.75 : stroke === "smash" ? 0.2 : stroke === "serve" ? 0.15 : 0.45;
-  return { x: p.x + p.rightX * off, y: p.y + p.dirY * 0.35 };
+  const off2 = stroke === "fh" ? 0.85 : stroke === "bh" ? -0.75 : stroke === "smash" ? 0.2 : stroke === "serve" ? 0.15 : 0.45;
+  return { x: p.x + p.rightX * off2, y: p.y + p.dirY * 0.35 };
 }
 function chooseStroke(p, ball, bounced, key) {
   const tc = 0.15;
@@ -24005,37 +24005,37 @@ var MatchScore = class {
   /** Marca el punt per a `w`. */
   pointWon(w) {
     const o = 1 - w;
-    const out = { gameWon: false, setWon: false, matchWon: false };
-    if (this.winner !== null) return out;
+    const out2 = { gameWon: false, setWon: false, matchWon: false };
+    if (this.winner !== null) return out2;
     this.points[w]++;
     if (this.tiebreak) {
       if (this.points[w] >= 7 && this.points[w] - this.points[o] >= 2) {
-        out.gameWon = true;
+        out2.gameWon = true;
         this.games[w]++;
         this.finishSet(w, [this.points[0], this.points[1]]);
-        out.setWon = true;
-        out.matchWon = this.winner !== null;
+        out2.setWon = true;
+        out2.matchWon = this.winner !== null;
         this.gameServer = 1 - this.tbFirst;
         this.tiebreak = false;
         this.points = [0, 0];
       }
-      return out;
+      return out2;
     }
     if (this.points[w] >= 4 && this.points[w] - this.points[o] >= 2) {
-      out.gameWon = true;
+      out2.gameWon = true;
       this.games[w]++;
       this.points = [0, 0];
       this.gameServer = 1 - this.gameServer;
       if (this.games[w] >= 6 && this.games[w] - this.games[o] >= 2) {
         this.finishSet(w);
-        out.setWon = true;
-        out.matchWon = this.winner !== null;
+        out2.setWon = true;
+        out2.matchWon = this.winner !== null;
       } else if (this.games[0] === 6 && this.games[1] === 6) {
         this.tiebreak = true;
         this.tbFirst = this.gameServer;
       }
     }
-    return out;
+    return out2;
   }
   finishSet(w, tb) {
     this.sets.push({ games: [this.games[0], this.games[1]], tiebreak: tb });
@@ -24522,9 +24522,9 @@ var Match = class {
   callOut(x, y) {
     const dx = Math.abs(x) - COURT.halfWs;
     const dy = Math.abs(y) - COURT.halfL;
-    const out = Math.max(dx, dy);
-    this.emit({ type: "out", near: out < 0.25 });
-    if (out < 0.25) this.emit({ type: "crowd", kind: "gasp", intensity: 0.7 });
+    const out2 = Math.max(dx, dy);
+    this.emit({ type: "out", near: out2 < 0.25 });
+    if (out2 < 0.25) this.emit({ type: "crowd", kind: "gasp", intensity: 0.7 });
   }
   onNet(speed, cord) {
     this.netTouched = true;
@@ -24588,24 +24588,24 @@ var Match = class {
         break;
     }
     if (Math.abs(this.players[winner].y) < 5.5 && (reason === "winner" || reason === "ace")) this.stats.p[winner].netPointsWon++;
-    const out = this.score.pointWon(winner);
+    const out2 = this.score.pointWon(winner);
     this.lastPoint = { winner, reason };
     this.emit({ type: "point", winner, reason, rally: this.rallyHits });
     const names = this.names;
     let text;
     let tmo = this.cfg.fast ? 0.01 : 2.3;
-    if (out.matchWon) {
+    if (out2.matchWon) {
       text = `Joc, set i partit, ${names[winner]}`;
       this.emit({ type: "game", winner });
       this.emit({ type: "set", winner });
       tmo = 3.2;
-    } else if (out.setWon) {
+    } else if (out2.setWon) {
       const last = this.score.sets[this.score.sets.length - 1].games;
       text = `Joc i set, ${names[winner]}, ${last[winner]} a ${last[loser]}`;
       this.emit({ type: "game", winner });
       this.emit({ type: "set", winner });
       tmo = 3.4;
-    } else if (out.gameWon) {
+    } else if (out2.gameWon) {
       text = `Joc, ${names[winner]}. ${this.score.games[0]} a ${this.score.games[1]}`;
       this.emit({ type: "game", winner });
       tmo = 3;
@@ -24614,31 +24614,31 @@ var Match = class {
     }
     this.emit({ type: "announce", text, speak: true });
     const long = this.rallyHits >= 9;
-    const intensity = out.gameWon ? 0.9 : long ? 0.8 : reason === "ace" ? 0.7 : 0.45;
-    this.emit({ type: "crowd", kind: out.gameWon || long ? "applause" : "cheer", intensity });
+    const intensity = out2.gameWon ? 0.9 : long ? 0.8 : reason === "ace" ? 0.7 : 0.45;
+    this.emit({ type: "crowd", kind: out2.gameWon || long ? "applause" : "cheer", intensity });
     if (this.cfg.fast) tmo = 0.01;
     this.timer = tmo;
     this.phase = "point_end";
-    this.matchOverPending = out.matchWon;
+    this.matchOverPending = out2.matchWon;
     this.faultReplay = false;
     for (const p of this.players) p.recover(0.02);
-    this.startEmotes(winner, loser, reason, out);
+    this.startEmotes(winner, loser, reason, out2);
   }
   /** Celebracions i decepcions després del punt (només animació, no afecten el joc). */
-  startEmotes(winner, loser, reason, out) {
+  startEmotes(winner, loser, reason, out2) {
     const w = this.players[winner];
     const l = this.players[loser];
-    if (out.matchWon) {
+    if (out2.matchWon) {
       w.startEmote("win", 99);
       l.startEmote("lose", 99);
       return;
     }
-    if (out.setWon) {
+    if (out2.setWon) {
       w.startEmote("arms", 2.4);
       l.startEmote("shake", 1.6);
       return;
     }
-    if (out.gameWon) {
+    if (out2.gameWon) {
       w.startEmote("fist", 1.6);
       l.startEmote("slump", 1.2);
       return;
@@ -25047,9 +25047,9 @@ function line(ctx, x0, y0, x1, y1, w, color) {
   const sx = ax < bx ? 1 : -1;
   const sy = ay < by ? 1 : -1;
   let err = dx + dy;
-  const off = Math.floor((w - 1) / 2);
+  const off2 = Math.floor((w - 1) / 2);
   for (let i = 0; i < 400; i++) {
-    ctx.fillRect(ax - off, ay - off, w, w);
+    ctx.fillRect(ax - off2, ay - off2, w, w);
     if (ax === bx && ay === by) break;
     const e2 = 2 * err;
     if (e2 >= dy) {
@@ -25232,12 +25232,12 @@ function strokeKeys(stroke, variant, c, st, side) {
       ];
     default: {
       const sg = side;
-      const off = sg > 0 ? -0.25 : 0.4;
+      const off2 = sg > 0 ? -0.25 : 0.4;
       return [
         K(0),
-        K(tb, { hx: 0.5 * sg, hy: 1.22, ang: 1.05 * sg, ox: off, oy: 1.3, twist: 0.3 * sg, crouch: 0.1, fd: -0.1, ofd: 0.7, grip: 0.2 }),
-        K(c, { hx: 0.55 * sg, hy: 1.2, ang: 0.5 * sg, ox: off, oy: 1.28, twist: -0.05 * sg, lean: 0.06, crouch: 0.12, shift: 0.06 * sg, fd: 0.8, ofd: 0.7, grip: 0.2 }),
-        K(tf, { hx: 0.42 * sg, hy: 1.15, ang: 0.3 * sg, ox: off, oy: 1.2, twist: -0.1 * sg, lean: 0.05, crouch: 0.1, fd: 0.8, ofd: 0.7, grip: 0.4 }),
+        K(tb, { hx: 0.5 * sg, hy: 1.22, ang: 1.05 * sg, ox: off2, oy: 1.3, twist: 0.3 * sg, crouch: 0.1, fd: -0.1, ofd: 0.7, grip: 0.2 }),
+        K(c, { hx: 0.55 * sg, hy: 1.2, ang: 0.5 * sg, ox: off2, oy: 1.28, twist: -0.05 * sg, lean: 0.06, crouch: 0.12, shift: 0.06 * sg, fd: 0.8, ofd: 0.7, grip: 0.2 }),
+        K(tf, { hx: 0.42 * sg, hy: 1.15, ang: 0.3 * sg, ox: off2, oy: 1.2, twist: -0.1 * sg, lean: 0.05, crouch: 0.1, fd: 0.8, ofd: 0.7, grip: 0.4 }),
         K(1)
       ];
     }
@@ -25404,7 +25404,8 @@ function drawPlayerSprite(ctx, d) {
   const { look, style, view, s, pose } = d;
   const mir = (view === "back" ? 1 : -1) * (style.lefty ? -1 : 1);
   const back = view === "back";
-  const hScale = look.height / 1.85;
+  const hScale0 = look.height / 1.85;
+  const hScale = hScale0 * 1.16;
   const b = look.build;
   const X = (lx) => d.x + lx * s;
   const Y = (ly) => d.y - ly * s;
@@ -25412,7 +25413,7 @@ function drawPlayerSprite(ctx, d) {
   const crouch = pose.crouch;
   const hipY = (0.95 - crouch * 0.55) * hScale + lift;
   const shoulderY = (1.5 - crouch * 0.9 - pose.lean * 0.35) * hScale + lift;
-  const sw = 0.44 * b * (1 - 0.35 * Math.abs(pose.twist)) * (0.9 + 0.1 * hScale);
+  const sw = 0.5 * b * (1 - 0.3 * Math.abs(pose.twist)) * (0.9 + 0.1 * hScale);
   const bodyDx = pose.bodyDx + pose.twist * 0.02 + pose.lean * 0.05 + mir * pose.shift;
   const tkW = (m) => Math.max(1, Math.round(m * s));
   const skin = look.skin;
@@ -25437,8 +25438,8 @@ function drawPlayerSprite(ctx, d) {
     const kneeBend = 0.05 + crouch * 0.4;
     const kx = (h[0] + f[0]) / 2 + (i === 0 ? -1 : 1) * kneeBend;
     const ky = (h[1] + f[1]) / 2 + 0.03;
-    const thick = tkW(0.13 * b * hScale);
-    const thin = tkW(0.1 * b * hScale);
+    const thick = Math.max(2, tkW(0.165 * b * hScale));
+    const thin = Math.max(2, tkW(0.125 * b * hScale));
     line(ctx, X(kx), Y(ky), X(f[0]), Y(f[1]), thin, skin);
     const sockT = look.socks;
     const sx0 = f[0] + (kx - f[0]) * 0.3;
@@ -25454,8 +25455,8 @@ function drawPlayerSprite(ctx, d) {
       line(ctx, X(tx), Y(ty), X(kx), Y(ky), thick, skin);
       line(ctx, X(h[0]), Y(h[1]), X(tx), Y(ty), thick, shortsC);
     }
-    const sw2 = tkW(0.2 * b);
-    rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.09), sw2, Math.max(2, tkW(0.1)), look.shoes);
+    const sw2 = tkW(0.25 * b);
+    rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.11), sw2, Math.max(2, tkW(0.12)), look.shoes);
     rect(ctx, X(feet[i][0]) - sw2 / 2, Y(feet[i][1] + 0.02), sw2, 1, shade(look.shoes, 0.6));
   }
   const waistW = 0.32 * b;
@@ -25465,11 +25466,11 @@ function drawPlayerSprite(ctx, d) {
   const shoulderDom = [mir * sw * 0.5 + bodyDx, shoulderY - 0.03];
   const L1 = 0.3 * hScale;
   const L2 = 0.3 * hScale;
-  const armT = tkW(0.095 * b * hScale);
+  const armT = Math.max(2, tkW(0.125 * b * hScale));
   const dhx = mir * pose.hx;
-  const dhy = pose.hy * hScale + lift;
+  const dhy = pose.hy * hScale0 + lift;
   const fox = mir * pose.ox;
-  const foy = pose.oy * hScale + lift;
+  const foy = pose.oy * hScale0 + lift;
   const ohx = fox + (dhx - mir * 0.04 - fox) * pose.grip;
   const ohy = foy + (dhy - 0.04 - foy) * pose.grip;
   const offFd = pose.ofd + (pose.fd - pose.ofd) * pose.grip;
@@ -25519,7 +25520,7 @@ function drawPlayerSprite(ctx, d) {
     rect(ctx, X(bodyDx - sw / 2), Y(shoulderY + 0.04), 1, 1, skin);
     rect(ctx, X(bodyDx + sw / 2) - 1, Y(shoulderY + 0.04), 1, 1, skin);
   }
-  const headR = 0.105 * Math.pow(b, 0.3) * hScale;
+  const headR = 0.125 * Math.pow(b, 0.3) * hScale;
   const hx0 = bodyDx + pose.twist * 0.03 + pose.lean * 0.04;
   const hy0 = shoulderY + 0.14 + headR * 0.55 + pose.lean * 0.02;
   const cxp = X(hx0);
@@ -25561,7 +25562,7 @@ function drawPlayerSprite(ctx, d) {
   }
   if (!offBehind) drawArm(shoulderOff, ohx, ohy, offDir);
   if (!domBehind) drawArm(shoulderDom, dhx, dhy, domDir);
-  drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale);
+  return drawRacket(ctx, X(dhx), Y(dhy), pose.ang * mir, s, look.racketFrame, hScale0);
 }
 function drawHair(ctx, look, cx, cy, rp, back, s) {
   const c = look.hair;
@@ -25620,6 +25621,7 @@ function drawRacket(ctx, hx, hy, ang, s, frame, hScale) {
       }
     }
   }
+  return { x: cx, y: cy };
 }
 function drawSittingOfficial(ctx, x, y, s, shirt, arm, front) {
   const h = Math.max(6, Math.round(1.1 * s));
@@ -25637,6 +25639,77 @@ function drawSittingOfficial(ctx, x, y, s, shirt, arm, front) {
     line(ctx, x - 0.17 * s, y - 0.88 * s, x - 0.2 * s, y - 0.62 * s, 1, "#e0b090");
     line(ctx, x + 0.17 * s, y - 0.88 * s, x + 0.2 * s, y - 0.62 * s, 1, "#e0b090");
   }
+}
+
+// src/render/finish.ts
+var off = null;
+var offCtx = null;
+var out = null;
+var outCtx = null;
+function ensure(w, h) {
+  if (!off) {
+    off = document.createElement("canvas");
+    out = document.createElement("canvas");
+  }
+  if (off.width !== w || off.height !== h) {
+    off.width = out.width = w;
+    off.height = out.height = h;
+    offCtx = off.getContext("2d", { willReadFrequently: true });
+    outCtx = out.getContext("2d");
+  }
+}
+var clamp8 = (v) => v < 0 ? 0 : v > 255 ? 255 : v | 0;
+function drawPlayerFinished(ctx, d) {
+  const w = Math.ceil(3.4 * d.s) + 12;
+  const h = Math.ceil(3.8 * d.s) + 12;
+  ensure(w, h);
+  const g = offCtx;
+  g.clearRect(0, 0, w, h);
+  g.imageSmoothingEnabled = false;
+  const ax = Math.round(w / 2);
+  const ay = h - 6;
+  const rk = drawPlayerSprite(g, { ...d, x: ax, y: ay });
+  const src = g.getImageData(0, 0, w, h);
+  const s = src.data;
+  const dst = new ImageData(w, h);
+  const o = dst.data;
+  const A = (x, y) => x >= 0 && y >= 0 && x < w && y < h && s[(y * w + x) * 4 + 3] > 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (s[i + 3] > 0) {
+        const up = A(x, y - 1);
+        const left = A(x - 1, y);
+        const down = A(x, y + 1);
+        const right = A(x + 1, y);
+        let f = 1;
+        if (!up || !left) f = 1.16;
+        else if (!down || !right) f = 0.8;
+        if (!down) f = Math.min(f, 0.76);
+        o[i] = clamp8(s[i] * f);
+        o[i + 1] = clamp8(s[i + 1] * f);
+        o[i + 2] = clamp8(s[i + 2] * f);
+        o[i + 3] = 255;
+      } else {
+        let n = -1;
+        if (A(x, y + 1)) n = ((y + 1) * w + x) * 4;
+        else if (A(x - 1, y)) n = (y * w + x - 1) * 4;
+        else if (A(x + 1, y)) n = (y * w + x + 1) * 4;
+        else if (A(x, y - 1)) n = ((y - 1) * w + x) * 4;
+        if (n >= 0) {
+          o[i] = clamp8(s[n] * 0.28 + 6);
+          o[i + 1] = clamp8(s[n + 1] * 0.28 + 8);
+          o[i + 2] = clamp8(s[n + 2] * 0.3 + 18);
+          o[i + 3] = 255;
+        }
+      }
+    }
+  }
+  outCtx.putImageData(dst, 0, 0);
+  const bx = Math.round(d.x) - ax;
+  const by = Math.round(d.y) - ay;
+  ctx.drawImage(out, bx, by);
+  return { racketX: bx + rk.x, racketY: by + rk.y };
 }
 
 // src/ui/SpritePreview.tsx
@@ -25665,7 +25738,7 @@ function SpritePreview({ def, s = 30, width = 56, height = 72, scale = 3, animat
       }
       ctx.clearRect(0, 0, c.width, c.height);
       const pose = poseFor(p, t, null);
-      drawPlayerSprite(ctx, { look: def.look, style: def.style, view: "front", s, x: width / 2, y: height - 8, pose });
+      drawPlayerFinished(ctx, { look: def.look, style: def.style, view: "front", s, x: width / 2, y: height - 8, pose });
       ctx.fillStyle = "rgba(0,0,0,0.35)";
       ctx.fillRect(width / 2 - 8, height - 7, 16, 2);
       raf = requestAnimationFrame(draw);
@@ -25706,26 +25779,26 @@ function drawTrophy(ctx, x, y, k, t) {
   const gold = "#f5c518";
   const light = "#fff08a";
   const dark = "#b8860b";
-  const out = "#5a3d00";
+  const out2 = "#5a3d00";
   const r = (rx, ry, w, h, c) => {
     ctx.fillStyle = c;
     ctx.fillRect(Math.round(x + rx * k), Math.round(y + ry * k), Math.round(w * k), Math.round(h * k));
   };
   for (const sg of [-1, 1]) {
     const bx = sg < 0 ? -9 : 8;
-    r(bx - 1, 1, 3, 1, out);
-    r(bx - 1, 5, 3, 1, out);
-    r(bx + (sg < 0 ? -1 : 1), 2, 1, 3, out);
+    r(bx - 1, 1, 3, 1, out2);
+    r(bx - 1, 5, 3, 1, out2);
+    r(bx + (sg < 0 ? -1 : 1), 2, 1, 3, out2);
     r(bx, 2, 1, 3, gold);
   }
   CUP_ROWS.forEach((w, i) => {
     const x0 = -w / 2;
-    r(x0 - 1, i, w + 2, 1, out);
+    r(x0 - 1, i, w + 2, 1, out2);
     r(x0, i, w, 1, gold);
     r(x0 + 1, i, 2, 1, light);
     r(x0 + w - 3, i, 3, 1, dark);
   });
-  r(-4, 10, 8, 1, out);
+  r(-4, 10, 8, 1, out2);
   r(-1, 3, 2, 4, "#ffffff");
   r(-2, 4, 4, 2, "#ffffff");
   r(-2, 10, 4, 4, gold);
@@ -25734,7 +25807,7 @@ function drawTrophy(ctx, x, y, k, t) {
   r(-4, 14, 8, 2, gold);
   r(-6, 16, 12, 2, dark);
   r(-7, 18, 14, 3, gold);
-  r(-7, 20, 14, 1, out);
+  r(-7, 20, 14, 1, out2);
   r(-3, 18, 6, 2, "#2a6cd0");
   if (Math.floor(t * 6) % 4 === 0) {
     r(5, 1, 1, 3, "#ffffff");
@@ -25994,17 +26067,17 @@ var CAM = {
 };
 var S = Math.sin(CAM.pitch);
 var C = Math.cos(CAM.pitch);
-function project(x, y, z, out) {
+function project(x, y, z, out2) {
   const ry = y - CAM.y;
   const rz = z - CAM.z;
   const fwd = -ry * C - rz * S;
   const up = -ry * S + rz * C;
   const k = CAM.f / fwd;
-  out.sx = CAM.cx + x * k;
-  out.sy = CAM.cy - up * k;
-  out.ppm = k;
-  out.depth = fwd;
-  return out;
+  out2.sx = CAM.cx + x * k;
+  out2.sy = CAM.cy - up * k;
+  out2.ppm = k;
+  out2.depth = fwd;
+  return out2;
 }
 var newProj = () => ({ sx: 0, sy: 0, ppm: 1, depth: 1 });
 function rayDir(sx, sy) {
@@ -26027,6 +26100,24 @@ var STAND_BASE_Z = 1.1;
 var SIDE_START = 10.2;
 var INNER = ["#3d74c6", "#3870c0"];
 var OUTER = ["#2f8c66", "#2b8461"];
+function buildSponsors() {
+  const defs = [
+    ["PIXELBANK", "#0b2a6e", "#ffe066"],
+    ["NEOSERVE", "#b3122b", "#ffffff"],
+    ["RACKETX", "#0b6e4f", "#d4ff2a"],
+    ["ACE FUEL", "#e0a800", "#1a1030"],
+    ["TOPSPIN", "#4b1f8f", "#8cf0ff"],
+    ["SMASH COLA", "#d8401a", "#ffffff"]
+  ];
+  return defs.map(([name, bg, fg]) => {
+    const w = textWidth(name);
+    const bits = new Uint8Array(w * 5);
+    plotText(name, (x, y) => {
+      if (x >= 0 && x < w && y >= 0 && y < 5) bits[y * w + x] = 1;
+    });
+    return { bg: hexToRgb(bg), fg: hexToRgb(fg), w, bits };
+  });
+}
 function hash(a, b) {
   let h = Math.imul(a * 374761393 + b * 668265263, 1274126177);
   h = (h ^ h >>> 13) >>> 0;
@@ -26058,7 +26149,7 @@ function buildBackground() {
   const data = img.data;
   const innerRgb = INNER.map(hexToRgb);
   const outerRgb = OUTER.map(hexToRgb);
-  const boardCols = ["#0b2a6e", "#b3122b", "#0b6e4f", "#e0a800", "#4b1f8f"].map(hexToRgb);
+  const sponsors = buildSponsors();
   const seatCols = ["#3b2d6e", "#4c3b86", "#2f3f7a", "#5a2f6e"].map(hexToRgb);
   for (let sy = 0; sy < H; sy++) {
     const below = groundAt(CAM.cx, sy + 1);
@@ -26123,24 +26214,28 @@ function buildBackground() {
             rgb = shadeRgb(rgb, 0.92 + 0.08 * light);
           } else {
             const cols = inside ? innerRgb : outerRgb;
-            const n = hash(Math.floor(wx * 3), Math.floor(wy * 3));
-            const base = cols[n > 0.55 ? 1 : 0];
+            const n = hash(Math.floor(wx * 1.2), Math.floor(wy * 1.2));
+            const base = cols[n > 0.6 ? 1 : 0];
+            const gr = hash(sx * 7 + 3, sy * 13 + 5);
             const q = light + (bayer - 0.5) * 0.1;
-            rgb = shadeRgb(base, q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76);
+            rgb = shadeRgb(base, (q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76) * (gr > 0.93 ? 0.93 : gr < 0.05 ? 1.05 : 1));
           }
           break;
         }
         case "board": {
-          const seg = Math.floor((wx + 40) / 2.6);
-          let c = boardCols[seg % boardCols.length];
+          const seg = Math.floor((wx + 40) / 3.4);
+          const sp = sponsors[(seg % sponsors.length + sponsors.length) % sponsors.length];
+          let c = sp.bg;
           const zi = wz / 1.1;
           if (zi > 0.9) c = [20, 24, 40];
+          else if (zi < 0.08) c = shadeRgb(sp.bg, 0.6);
           else {
-            const lx = (wx + 40) / 2.6 - seg;
-            const bar = zi > 0.3 && zi < 0.62 && lx > 0.12 && lx < 0.88 && Math.floor(lx * 18) % 3 !== 2 && hash(seg, Math.floor(lx * 18)) > 0.25;
-            if (bar) c = [245, 245, 250];
+            const lx = (wx + 40) / 3.4 - seg;
+            const tx = Math.floor((lx - 0.06) / 0.88 * sp.w);
+            const ty = Math.floor((0.88 - zi) / 0.68 * 5);
+            if (tx >= 0 && tx < sp.w && ty >= 0 && ty < 5 && sp.bits[ty * sp.w + tx]) c = sp.fg;
           }
-          rgb = shadeRgb(c, 0.9 + (bayer - 0.5) * 0.08);
+          rgb = shadeRgb(c, 0.95 + (bayer - 0.5) * 0.06);
           break;
         }
         case "far": {
@@ -26425,7 +26520,9 @@ var Renderer = class {
   marks = [];
   popups = [];
   floaters = [];
+  racketTrails = [[], []];
   teamsSet = false;
+  mref = null;
   lastMeterFull = [false, false];
   trail = [];
   judges = [
@@ -26515,6 +26612,26 @@ var Renderer = class {
           }
           if (e.stroke === "smash" || e.stroke === "serve" && e.power > 0.9) this.shake = 0.12;
           this.hitFeedback(e);
+          break;
+        }
+        case "step": {
+          const pl = this.mref?.players[e.player];
+          if (pl) {
+            const n = e.slide ? 5 : 2;
+            for (let i = 0; i < n; i++) {
+              this.particles.push({
+                x: pl.x + (Math.random() - 0.5) * 0.3,
+                y: pl.y + (Math.random() - 0.5) * 0.2,
+                z: 0.03,
+                vx: (Math.random() - 0.5) * 1.4 - pl.vx * 0.12,
+                vy: (Math.random() - 0.5) * 1 - pl.vy * 0.12,
+                vz: 0.5 + Math.random() * 0.8,
+                life: 0,
+                max: e.slide ? 0.4 : 0.26,
+                color: i % 2 ? "#dfe9fb" : "#b8c9ea"
+              });
+            }
+          }
           break;
         }
         case "fault":
@@ -26659,6 +26776,7 @@ var Renderer = class {
   draw(m, dt) {
     const ctx = this.ctx;
     this.time += dt;
+    this.mref = m;
     if (!this.teamsSet) {
       this.teamsSet = true;
       this.crowd.setTeams(m.players[0].def.look.shirt, m.players[1].def.look.shirt);
@@ -26810,7 +26928,7 @@ var Renderer = class {
     project(pl.x, pl.y, 0, p);
     const tossZ = pl.tossing || pl.serveStance ? m.ball.z : null;
     const pose = poseFor(pl, this.time, tossZ);
-    drawPlayerSprite(ctx, {
+    const fin = drawPlayerFinished(ctx, {
       look: pl.def.look,
       style: pl.def.style,
       view: pl.side > 0 ? "back" : "front",
@@ -26819,6 +26937,25 @@ var Renderer = class {
       y: p.sy,
       pose
     });
+    this.updateRacketTrail(ctx, pl, fin.racketX, fin.racketY);
+  }
+  /** Estela de la raqueta durant el cop (arc de moviment). */
+  updateRacketTrail(ctx, pl, rx, ry) {
+    const tr = this.racketTrails[pl.idx];
+    const sw = pl.swing;
+    const fast = sw && sw.stroke !== "vol" ? sw.t > sw.contactAt * 0.4 && sw.t < sw.dur * 0.8 : sw ? sw.t < sw.dur * 0.7 : false;
+    if (fast) {
+      tr.push({ x: rx, y: ry });
+      if (tr.length > 9) tr.shift();
+    } else if (tr.length) {
+      tr.shift();
+      if (tr.length) tr.shift();
+    }
+    for (let i = 1; i < tr.length; i++) {
+      const f = i / tr.length;
+      const c = f < 0.35 ? "#5f86c8" : f < 0.7 ? "#a8c8ff" : "#ffffff";
+      line(ctx, tr[i - 1].x, tr[i - 1].y, tr[i].x, tr[i].y, f > 0.6 ? 2 : 1, c);
+    }
   }
   drawBall(ctx, m) {
     const b = m.ball;
