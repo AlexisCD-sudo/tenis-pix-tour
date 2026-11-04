@@ -21,6 +21,8 @@ interface Spot {
   hw: number;
   hx: number;
   hairH: number;
+  /** 0 = sense bandera, 1/2 = bandera del jugador 1/2. */
+  flag: 0 | 1 | 2;
 }
 
 /**
@@ -37,6 +39,11 @@ export class Crowd {
   /** Impuls per zones (per exemple un costat s'alça). */
   private flash = 0;
   private wave = -1;
+  /** Salt col·lectiu i badall (sorpresa) amb decaïment. */
+  private jumpT = 0;
+  private gaspT = 0;
+  private teamA = '#e63946';
+  private teamB = '#3498db';
 
   constructor() {
     const seats = buildSeats();
@@ -62,10 +69,32 @@ export class Crowd {
         hair: HAIRS[(seat.hue * 3 + Math.floor(seat.phase * 7)) % HAIRS.length],
         shirt: SHIRTS[seat.hue % SHIRTS.length],
         depth: p.depth,
+        // ~1 de cada 9 aficionats porta una bandera d'un dels dos jugadors
+        flag: (seat.hue * 5 + Math.floor(seat.phase * 13)) % 9 === 0 ? (((seat.hue + Math.floor(seat.phase * 4)) & 1) === 0 ? 1 : 2) : 0,
       });
     }
     // De més lluny a més a prop
     this.spots.sort((a, b) => b.depth - a.depth);
+  }
+
+  setTeams(a: string, b: string): void {
+    this.teamA = a;
+    this.teamB = b;
+  }
+
+  /** Salt col·lectiu amb els braços amunt. */
+  jump(): void {
+    this.jumpT = 1;
+  }
+
+  /** Sorpresa: mans al cap i cos cap enrere. */
+  gasp(): void {
+    this.gaspT = 0.9;
+  }
+
+  /** Onada de l'estadi. */
+  startWave(): void {
+    this.wave = 0;
   }
 
   cheer(level: number): void {
@@ -77,6 +106,8 @@ export class Crowd {
   update(dt: number): void {
     this.excitement = Math.max(0.12, this.excitement - dt * 0.28);
     this.flash = Math.max(0, this.flash - dt * 1.5);
+    this.jumpT = Math.max(0, this.jumpT - dt * 0.9);
+    this.gaspT = Math.max(0, this.gaspT - dt);
     if (this.wave >= 0) {
       this.wave += dt * 14;
       if (this.wave > 60) this.wave = -1;
@@ -97,7 +128,7 @@ export class Crowd {
 
   draw(ctx: Ctx, time: number): void {
     const e = this.excitement;
-    if (e <= IDLE_MAX && this.wave < 0) {
+    if (e <= IDLE_MAX && this.wave < 0 && this.jumpT <= 0 && this.gaspT <= 0) {
       this.idleLayer ??= this.buildIdleLayer();
       ctx.drawImage(this.idleLayer, 0, 0);
     } else {
@@ -119,13 +150,29 @@ export class Crowd {
       const ph = seat.phase;
       let bob = Math.sin(time * (2 + e * 7) + ph) * (0.3 + e * 1.1);
       let arms = e > 0.55 && Math.sin(ph * 5 + time * 6) > 0.1;
+      let armsUp = false;
+      let hands = false;
       if (animated && this.wave >= 0) {
         const wx = seat.zone === 'far' ? seat.x + 22 : seat.zone === 'left' ? 44 + (20 - seat.y) : 44 + 22 + 44 + seat.y;
         const d = this.wave - wx * 0.5;
         if (d > -2 && d < 4) {
           arms = true;
-          bob -= 1.2;
+          armsUp = true;
+          bob -= 2.4;
         }
+      }
+      if (animated && this.jumpT > 0) {
+        // Salt col·lectiu: cada aficionat salta una mica desfasat
+        bob -= this.jumpT * 2.6 * Math.abs(Math.sin(time * 9 + ph * 3));
+        arms = true;
+        armsUp = true;
+      }
+      if (animated && this.gaspT > 0.3 && Math.sin(ph * 11) > -0.2) {
+        // Sorpresa: mans al cap
+        hands = true;
+        arms = false;
+        armsUp = false;
+        bob += 0.8;
       }
       const by = Math.round(s.sy + bob);
       const x = s.x;
@@ -135,10 +182,30 @@ export class Crowd {
       rect(ctx, s.hx, by - s.hw, s.hw, s.hw, s.skin);
       rect(ctx, s.hx, by - s.hw, s.hw, s.hairH, s.hair);
       if (arms) {
-        px(ctx, x - 1, by - 2, s.skin, 1);
-        px(ctx, x + s.w, by - 2, s.skin, 1);
-        px(ctx, x - 1, by - 1, s.skin, 1);
-        px(ctx, x + s.w, by - 1, s.skin, 1);
+        const up = armsUp ? 3 : 0;
+        px(ctx, x - 1, by - 2 - up, s.skin, 1);
+        px(ctx, x + s.w, by - 2 - up, s.skin, 1);
+        px(ctx, x - 1, by - 1 - up, s.skin, 1);
+        px(ctx, x + s.w, by - 1 - up, s.skin, 1);
+        if (armsUp) {
+          px(ctx, x - 1, by - 1, s.skin, 1);
+          px(ctx, x + s.w, by - 1, s.skin, 1);
+        }
+      }
+      if (hands) {
+        px(ctx, s.hx - 1, by - s.hw, s.skin, 1);
+        px(ctx, s.hx + s.hw, by - s.hw, s.skin, 1);
+      }
+      if (animated && s.flag && e > 0.3) {
+        // Bandera ondulant amb el color del jugador
+        const col = s.flag === 1 ? this.teamA : this.teamB;
+        const fw = Math.max(3, s.w);
+        const fh = Math.max(2, Math.round(s.w * 0.6));
+        const top = by - s.hw - 4;
+        const wav = Math.round(Math.sin(time * 8 + ph * 6));
+        rect(ctx, x + s.w, top, 1, s.hw + 4 + (arms ? 0 : 2), '#c9c9c9');
+        rect(ctx, x + s.w + 1, top + wav, fw, fh, col);
+        rect(ctx, x + s.w + 1, top + wav, fw, 1, '#ffffff');
       }
     }
   }

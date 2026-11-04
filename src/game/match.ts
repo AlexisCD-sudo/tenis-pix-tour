@@ -15,7 +15,7 @@ export interface Controller {
 }
 
 export type MatchEvent =
-  | { type: 'hit'; player: number; stroke: Stroke; variant: HitKey; power: number; quality: number; kmh: number; x: number; y: number; z: number }
+  | { type: 'hit'; player: number; stroke: Stroke; variant: HitKey; power: number; quality: number; rating: HitRating; superShot: boolean; kmh: number; x: number; y: number; z: number }
   | { type: 'bounce'; x: number; y: number; vz: number; speed: number; inBounds: boolean }
   | { type: 'net'; speed: number; cord: boolean }
   | { type: 'toss'; player: number }
@@ -31,6 +31,12 @@ export type MatchEvent =
   | { type: 'step'; player: number; slide: boolean }
   | { type: 'crowd'; kind: 'cheer' | 'gasp' | 'applause' | 'murmur' | 'ooh'; intensity: number }
   | { type: 'pointStart' };
+
+/** Valoració del timing del cop. */
+export type HitRating = 'perfect' | 'nice' | 'ok' | 'weak';
+
+export const rateQuality = (q: number, serve: boolean): HitRating =>
+  q >= (serve ? 0.85 : 0.9) ? 'perfect' : q >= 0.72 ? 'nice' : q >= 0.5 ? 'ok' : 'weak';
 
 export type PointReason = 'ace' | 'winner' | 'out' | 'net' | 'doublefault' | 'double_bounce' | 'dead';
 
@@ -90,6 +96,14 @@ export class Match {
   events: MatchEvent[] = [];
   recordEvents = true;
   ballVisible = false;
+  /** Medidor de súper cop (0..1) de cada jugador. */
+  meter: [number, number] = [0, 0];
+  /** Segons de joc que queden de càmera lenta (després d'un súper cop). */
+  slowT = 0;
+  /** Segons reals d'aturada d'imatge (impacte). Només el llegeix el runner. */
+  hitStop = 0;
+  /** La pilota va encesa (súper cop) fins que el rival la torna. */
+  fireBall = false;
 
   // Estat de la jugada
   lastHitter: number = -1;
@@ -150,9 +164,15 @@ export class Match {
     return [this.cfg.p0.name, this.cfg.p1.name];
   }
 
+  /** Factor de temps (càmera lenta durant un súper cop). */
+  get timeScale(): number {
+    return this.slowT > 0 ? 0.35 : 1;
+  }
+
   // ---------------------------------------------------------------- pas
   step(dt: number): void {
     this.time += dt;
+    if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dt);
     if (this.phase !== 'match_end') this.stats.duration += dt;
 
     // Controladors
@@ -236,6 +256,7 @@ export class Match {
 
   private setupPoint(first: boolean): void {
     this.placePlayers();
+    this.fireBall = false;
     for (const p of this.players) p.recover(0.05);
     const ps = this.players[this.server];
     this.serveStage = 1;
@@ -360,13 +381,17 @@ export class Match {
       if (sw.t >= sw.contactAt) {
         if (this.canHit(p)) {
           const q = contactQuality(p, this.ball, sw.stroke);
-          // Contacte quan és prou bo o al final de la finestra
-          if (q.q > 0 && (q.q >= 0.5 || sw.t >= sw.windowEnd - 0.02)) {
+          // Contacte al punt òptim: quan la qualitat és excel·lent, o just quan comença a baixar
+          // (la pilota ja ha passat pel millor punt), o al final de la finestra.
+          const passedPeak = sw.bestQ >= 0.5 && q.q < sw.bestQ - 0.015;
+          const gone = q.q <= 0 && sw.bestQ >= 0.5;
+          if ((q.q > 0 && (q.q >= 0.9 || passedPeak || sw.t >= sw.windowEnd - 0.02)) || gone) {
             sw.done = true;
             sw.hitBall = true;
-            this.executeHit(p, q.q);
+            this.executeHit(p, passedPeak || gone ? Math.max(q.q, sw.bestQ) : q.q);
             continue;
           }
+          if (q.q > sw.bestQ) sw.bestQ = q.q;
         }
         if (sw.t >= sw.windowEnd) {
           sw.done = true;
@@ -387,7 +412,29 @@ export class Match {
     const b = this.ball;
     const isServe = sw.stroke === 'serve';
     const serve = isServe ? this.serveCtx : null;
+    // Timing: perfecte = més potència i precisió; fluix = menys potència
+    const rating = rateQuality(quality, isServe);
+    let superShot = false;
+    sw.boost = rating === 'perfect' ? 1.1 : rating === 'weak' ? 0.88 : 1;
+    if (this.meter[p.idx] >= 1 && (rating === 'perfect' || rating === 'nice')) {
+      superShot = true;
+      sw.boost = isServe ? 1.2 : 1.3;
+      quality = 1;
+    }
     const res = buildHit(p, b, sw, quality, this.rng, serve);
+    // Medidor de súper cop
+    if (superShot) {
+      this.meter[p.idx] = 0;
+      this.fireBall = true;
+      this.slowT = 0.14;
+      this.hitStop = 0.09;
+    } else {
+      this.fireBall = false;
+      let gain = rating === 'perfect' ? 0.18 : rating === 'nice' ? 0.03 : rating === 'ok' ? 0.01 : 0;
+      if (this.rallyHits >= 4) gain += 0.01;
+      this.meter[p.idx] = Math.min(1, this.meter[p.idx] + gain);
+      if (rating === 'perfect') this.hitStop = 0.05;
+    }
     b.vx = res.vx;
     b.vy = res.vy;
     b.vz = res.vz;
@@ -422,6 +469,8 @@ export class Match {
       variant: sw.variant,
       power: res.power,
       quality,
+      rating,
+      superShot,
       kmh: res.kmh,
       x: b.x,
       y: b.y,

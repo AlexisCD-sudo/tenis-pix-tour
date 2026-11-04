@@ -34,6 +34,10 @@ export interface SwingState {
   hitBall: boolean;
   /** Costat de la pilota respecte a la mà dominant: +1 dreta, -1 revés (per a les voleas). */
   side: 1 | -1;
+  /** Millor qualitat de contacte vista durant la finestra (per colpejar al punt òptim). */
+  bestQ: number;
+  /** Multiplicador de potència (timing perfecte, súper cop). */
+  boost: number;
   aimX: number;
   aimY: number;
 }
@@ -157,7 +161,7 @@ export class Player {
     contactAt /= s;
     windowEnd /= s;
     dur /= s;
-    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, side, aimX, aimY };
+    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, side, bestQ: 0, boost: 1, aimX, aimY };
     this.lastStroke = stroke;
     this.lastVariant = variant;
     this.lastSide = side;

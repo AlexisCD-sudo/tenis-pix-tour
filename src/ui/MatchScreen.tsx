@@ -12,6 +12,7 @@ import { PauseMenu } from './PauseMenu';
 import { useViewport } from './hooks';
 import { PixelButton, PixelText } from './PixelText';
 import { TouchControls } from './TouchControls';
+import { VsIntro } from './VsIntro';
 
 export interface MatchSetup {
   p0: PlayerDef;
@@ -40,7 +41,10 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
   const vp = useViewport();
   const [hud, setHud] = useState<HudState | null>(null);
   const [paused, setPaused] = useState(false);
-  const [hint, setHint] = useState(true);
+  const [hint, setHint] = useState(false);
+  // Presentació VS abans del partit (no en mode demostració)
+  const [vs, setVs] = useState(!attract);
+  const vsRef = useRef(!attract);
   const touch = !attract && (settings.touch === 'on' || (settings.touch === 'auto' && vp.coarse));
 
   useEffect(() => {
@@ -58,15 +62,17 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
       onEnd: onFinish,
     });
     runnerRef.current = runner;
+    // Dades de depuració per als tests de navegador (?debug)
+    if (/[?&]debug/.test(window.location.search)) (window as unknown as { __match: Match }).__match = match;
     input.onPause = () => {
+      if (vsRef.current) return;
       const p = !runner.paused;
       runner.setPaused(p);
       setPaused(p);
     };
     runner.start();
-    const t = window.setTimeout(() => setHint(false), 7000);
+    if (vsRef.current) runner.setPaused(true);
     return () => {
-      window.clearTimeout(t);
       runner.stop();
       input.onPause = null;
       runnerRef.current = null;
@@ -75,8 +81,18 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
   }, [setup, difficulty, attract]);
 
   useEffect(() => {
+    if (vsRef.current) return;
     runnerRef.current?.setPaused(paused);
   }, [paused]);
+
+  const endVs = (): void => {
+    vsRef.current = false;
+    setVs(false);
+    runnerRef.current?.setPaused(false);
+    audio.unlock();
+    setHint(true);
+    window.setTimeout(() => setHint(false), 6500);
+  };
 
   // La guia de punteria es pot canviar en directe des del menú de pausa
   useEffect(() => {
@@ -102,17 +118,20 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
             <PixelText text={roundLabel} scale={1} color="#9fb4e8" />
           </div>
         ) : null}
-        {hint && !attract && !paused ? (
+        {vs ? (
+          <VsIntro a={setup.p0} b={setup.p1} roundLabel={roundLabel} size={vp.portrait || vp.h < 520 ? 1 : vp.h < 760 ? 2 : 3} onDone={endVs} />
+        ) : null}
+        {hint && !attract && !paused && !vs ? (
           <div className="hint">
             {touch ? (
               <>
                 <PixelText text="JOYSTICK: MOURE I APUNTAR" scale={1} color="#ffffff" />
-                <PixelText text="COP/SERVEI · SLICE · TOP · LOB" scale={1} color="#ffe066" />
+                <PixelText text="COP: PREM AL MOMENT EXACTE · EFECTE: SLICE" scale={1} color="#ffe066" />
               </>
             ) : (
               <>
                 <PixelText text="WASD / FLETXES: MOURE I APUNTAR" scale={1} color="#ffffff" />
-                <PixelText text="ESPAI COP/SERVEI  J SLICE  K TOPSPIN  L LOB  SHIFT CÓRRER" scale={1} color="#ffe066" />
+                <PixelText text="ESPAI COP/SERVEI  J EFECTE (J + AVALL = LOB)  SHIFT CÓRRER" scale={1} color="#ffe066" />
               </>
             )}
           </div>

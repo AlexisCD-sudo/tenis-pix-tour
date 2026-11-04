@@ -137,6 +137,8 @@ export class HumanController implements Controller {
         ((m.phase === 'rally' && p.swingCool <= 0) || m.phase === 'serve_wait' || m.phase === 'toss');
       if (canStart) hit = inp.takeHit();
     }
+    // Només 2 botons: COP i EFECTE. L'efecte fa slice, o globus si s'apunta enrere (avall)
+    if (hit === 'slice' && m.phase === 'rally' && aimY < -0.55) hit = 'lob';
     // Només durant el moment de joc: les pulsacions fora de context es descarten
     if (m.phase === 'point_end' || m.phase === 'intro' || m.phase === 'match_end') inp.clear();
     return {

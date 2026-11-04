@@ -36,6 +36,17 @@ interface Popup {
   y: number;
 }
 
+interface Floater {
+  text: string;
+  color: string;
+  x: number;
+  y: number;
+  z: number;
+  t: number;
+  dur: number;
+  size: number;
+}
+
 interface Judge {
   x: number;
   y: number;
@@ -82,6 +93,9 @@ export class Renderer {
   private particles: Particle[] = [];
   private marks: Mark[] = [];
   private popups: Popup[] = [];
+  private floaters: Floater[] = [];
+  private teamsSet = false;
+  private lastMeterFull: [boolean, boolean] = [false, false];
   private trail: { sx: number; sy: number }[] = [];
   private judges: Judge[] = [
     { x: -7.6, y: -11.9, signal: 0 },
@@ -190,6 +204,7 @@ export class Renderer {
             });
           }
           if (e.stroke === 'smash' || (e.stroke === 'serve' && e.power > 0.9)) this.shake = 0.12;
+          this.hitFeedback(e);
           break;
         }
         case 'fault':
@@ -221,11 +236,18 @@ export class Renderer {
           break;
         case 'point':
           if (e.reason === 'ace') this.popup('ACE!', '#ffe066');
-          this.crowd.cheer(e.reason === 'ace' ? 0.85 : 0.5);
+          if (e.reason === 'ace' || e.reason === 'winner') {
+            this.crowd.cheer(e.reason === 'ace' ? 0.9 : 0.65);
+            if (e.reason === 'ace' || e.rally >= 8) this.crowd.jump();
+          } else {
+            this.crowd.cheer(0.3);
+            this.crowd.gasp();
+          }
           break;
         case 'game':
           this.popup('JOC', '#ffffff');
           this.crowd.cheer(0.9);
+          this.crowd.jump();
           break;
         case 'set':
           this.popup('SET!', '#ffe066');
@@ -233,10 +255,81 @@ export class Renderer {
           break;
         case 'crowd':
           this.crowd.cheer(e.intensity * (e.kind === 'gasp' ? 0.6 : 1));
+          if (e.kind === 'gasp' || e.kind === 'ooh') this.crowd.gasp();
           break;
         default:
           break;
       }
+    }
+  }
+
+  /** Valoració del cop: text flotant, esclat de partícules, flaix i tremolor als súper cops. */
+  private hitFeedback(e: Extract<MatchEvent, { type: 'hit' }>): void {
+    const mine = this.humanIdx === e.player;
+    if (e.superShot) {
+      this.floaters.push({ text: 'SUPER SHOT!', color: '#ff8a2a', x: e.x, y: e.y, z: e.z + 1.1, t: 0, dur: 1.2, size: 2 });
+      this.flashWhite = 0.55;
+      this.shake = 0.3;
+      this.crowd.cheer(1);
+      this.crowd.jump();
+      this.crowd.startWave();
+      for (let i = 0; i < 22; i++) {
+        this.particles.push({
+          x: e.x, y: e.y, z: e.z,
+          vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.5) * 7, vz: Math.random() * 4,
+          life: 0, max: 0.35 + Math.random() * 0.25, color: ['#ff4a1a', '#ff9a1a', '#ffe066'][i % 3],
+        });
+      }
+      return;
+    }
+    if (e.rating === 'perfect' || e.rating === 'nice') {
+      const perfect = e.rating === 'perfect';
+      if (mine || (perfect && this.humanIdx === null)) {
+        this.floaters.push({ text: perfect ? 'PERFECT!' : 'NICE!', color: perfect ? '#ffe066' : '#8cf0ff', x: e.x, y: e.y, z: e.z + 0.9, t: 0, dur: perfect ? 0.9 : 0.6, size: perfect ? 2 : 1 });
+      }
+      if (perfect) {
+        this.flashWhite = Math.max(this.flashWhite, 0.18);
+        for (let i = 0; i < 12; i++) {
+          this.particles.push({
+            x: e.x, y: e.y, z: e.z,
+            vx: Math.cos((i / 12) * 6.283) * 3.2, vy: Math.sin((i / 12) * 6.283) * 3.2, vz: (Math.random() - 0.2) * 2,
+            life: 0, max: 0.28, color: i % 2 ? '#ffe066' : '#ffffff',
+          });
+        }
+      }
+    }
+  }
+
+  private drawFloaters(ctx: Ctx, dt: number): void {
+    const p = this.proj;
+    for (const f of this.floaters) f.t += dt;
+    this.floaters = this.floaters.filter((f) => f.t < f.dur);
+    for (const f of this.floaters) {
+      const k = f.t / f.dur;
+      project(f.x, f.y, f.z + k * 0.5, p);
+      if (k > 0.7 && Math.floor(f.t * 20) % 2 === 0) continue;
+      drawText(ctx, f.text, Math.round(clamp(p.sx, 30, W - 30)), Math.round(p.sy), f.color, f.size, '#0b1230', 'center');
+    }
+  }
+
+  /** Medidor de súper cop de cada jugador (a la part inferior). */
+  private drawMeters(ctx: Ctx, m: Match): void {
+    if (m.phase === 'intro') return;
+    const bw = 56;
+    for (const i of [0, 1] as const) {
+      const x = i === 0 ? 6 : W - 6 - bw;
+      const y = H - 10;
+      const v = m.meter[i];
+      const full = v >= 1;
+      rect(ctx, x - 1, y - 1, bw + 2, 6, '#05070d');
+      rect(ctx, x, y, bw, 4, '#1a2240');
+      const fw = Math.round(bw * v);
+      const blink = full && Math.floor(this.time * 8) % 2 === 0;
+      rect(ctx, x, y, fw, 4, full ? (blink ? '#ffffff' : '#ff9a1a') : '#ffb347');
+      rect(ctx, x, y, fw, 1, full ? '#ffe066' : '#ffd98a');
+      drawText(ctx, full ? 'SUPER!' : 'SUPER', x, y - 8, full ? '#ffe066' : '#9fb4e8');
+      if (full && !this.lastMeterFull[i] && this.humanIdx === i) this.popup('SUPER A PUNT!', '#ff9a1a');
+      this.lastMeterFull[i] = full;
     }
   }
 
@@ -249,6 +342,10 @@ export class Renderer {
   draw(m: Match, dt: number): void {
     const ctx = this.ctx;
     this.time += dt;
+    if (!this.teamsSet) {
+      this.teamsSet = true;
+      this.crowd.setTeams(m.players[0].def.look.shirt, m.players[1].def.look.shirt);
+    }
     this.crowd.update(dt);
     this.umpireArm = Math.max(0, this.umpireArm - dt);
     for (const j of this.judges) j.signal = Math.max(0, j.signal - dt);
@@ -273,6 +370,8 @@ export class Renderer {
     for (const d of list) d.draw();
 
     this.drawParticles(ctx, dt);
+    this.drawFloaters(ctx, dt);
+    this.drawMeters(ctx, m);
     this.drawPopups(ctx, dt);
     ctx.restore();
     ctx.drawImage(this.vignette, 0, 0);
@@ -428,8 +527,18 @@ export class Renderer {
     const sp = Math.hypot(b.vx, b.vy, b.vz);
     // Estela
     this.trail.push({ sx: p.sx, sy: p.sy });
-    if (this.trail.length > 7) this.trail.shift();
-    if (sp > 14 && m.phase !== 'serve_wait') {
+    const maxTrail = m.fireBall ? 16 : 7;
+    if (this.trail.length > maxTrail) this.trail.shift();
+    if (m.fireBall && sp > 8) {
+      const n = this.trail.length;
+      for (let i = 0; i < n - 1; i++) {
+        const t = this.trail[i];
+        const f = i / n;
+        const flick = Math.floor(this.time * 30 + i) % 2;
+        const c = f < 0.3 ? '#7a1a0a' : f < 0.55 ? '#d8401a' : f < 0.8 ? '#ff9a1a' : '#ffe066';
+        px(ctx, t.sx, t.sy - flick, c, f > 0.5 ? 3 : 2);
+      }
+    } else if (sp > 14 && m.phase !== 'serve_wait') {
       for (let i = 0; i < this.trail.length - 1; i++) {
         const t = this.trail[i];
         const c = i < 2 ? '#7a9a1a' : i < 4 ? '#a9d02a' : '#cdee3a';

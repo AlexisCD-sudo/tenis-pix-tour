@@ -165,6 +165,33 @@ test('el cop de servei informa de la seva pròpia velocitat (km/h)', () => {
   assert.equal(Math.max(...kmh), Math.max(m.stats.p[0].maxServeKmh, m.stats.p[1].maxServeKmh));
 });
 
+test('súper cop: amb el medidor ple, un bon cop surt encès i buida el medidor', () => {
+  const m = new Match({ p0: ROSTER[0], p1: ROSTER[1], humanIdx: null, difficulty: 'normal', seed: 11, fast: true }, [new AIController(1), new AIController(2)]);
+  m.meter = [1, 0];
+  let sup: { player: number } | null = null;
+  let n = 0;
+  while (!sup && n++ < 400000) {
+    m.step(DT);
+    for (const e of m.drainEvents()) if (e.type === 'hit' && e.superShot) sup = e;
+  }
+  assert.ok(sup, 'ha de sortir un súper cop');
+  assert.equal(sup!.player, 0);
+  assert.equal(m.meter[0] < 0.5, true);
+  assert.equal(m.fireBall, true);
+});
+
+test('timing: els cops tenen valoració i un cop perfecte omple el medidor', () => {
+  const m = new Match({ p0: ROSTER[2], p1: ROSTER[3], humanIdx: null, difficulty: 'normal', seed: 12, fast: true }, [new AIController(3), new AIController(4)]);
+  const seen = new Set<string>();
+  let n = 0;
+  while (n++ < 300000 && m.phase !== 'match_end') {
+    m.step(DT);
+    for (const e of m.drainEvents()) if (e.type === 'hit') seen.add(e.rating);
+  }
+  assert.ok(seen.has('perfect') && seen.has('nice'), [...seen].join());
+  assert.ok(m.meter[0] >= 0 && m.meter[0] <= 1 && m.meter[1] >= 0 && m.meter[1] <= 1);
+});
+
 // ------------------------------------------------------------------ física
 const SIM = { net: false, walls: false };
 

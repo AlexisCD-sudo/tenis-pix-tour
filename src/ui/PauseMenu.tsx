@@ -87,7 +87,7 @@ export function PauseMenu({ settings, onSettings, onResume, onQuit, touch, ps, c
               {touch ? (
                 <div className="crow">
                   <PixelText text="BOTONS" scale={1} color="#8cf0ff" />
-                  <PixelText text="COP/SERVEI · SLICE · TOP · LOB · CÓRRER" scale={1} color="#ffffff" />
+                  <PixelText text="COP/SERVEI · EFECTE (SLICE / GLOBUS) · CÓRRER" scale={1} color="#ffffff" />
                 </div>
               ) : null}
             </div>

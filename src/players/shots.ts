@@ -106,7 +106,7 @@ export function buildHit(
   const variant = swing.variant;
   const u = (clamp(swing.aimY, -1, 1) + 1) / 2; // 0 curt/suau .. 1 llarg/fort
   const aimX = clamp(swing.aimX, -1.15, 1.15);
-  const power = p.powerStat * (p.diff ? p.diff.powerMult : 1);
+  const power = Math.min(1.25, p.powerStat * (p.diff ? p.diff.powerMult : 1) * swing.boost);
   const prec = p.precStat;
   const stam = clamp(p.stamina, 0, 1);
   const vin = ballSpeed(ball);

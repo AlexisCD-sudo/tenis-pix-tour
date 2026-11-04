@@ -21722,11 +21722,11 @@ var require_jsx_runtime = __commonJS({
 });
 
 // src/main.tsx
-var import_react11 = __toESM(require_react(), 1);
+var import_react12 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
 // src/ui/App.tsx
-var import_react10 = __toESM(require_react(), 1);
+var import_react11 = __toESM(require_react(), 1);
 
 // src/audio/music.ts
 var N = null;
@@ -23200,7 +23200,7 @@ function buildHit(p, ball, swing, quality, rng, serve) {
   const variant = swing.variant;
   const u = (clamp(swing.aimY, -1, 1) + 1) / 2;
   const aimX = clamp(swing.aimX, -1.15, 1.15);
-  const power = p.powerStat * (p.diff ? p.diff.powerMult : 1);
+  const power = Math.min(1.25, p.powerStat * (p.diff ? p.diff.powerMult : 1) * swing.boost);
   const prec = p.precStat;
   const stam = clamp(p.stamina, 0, 1);
   const vin = ballSpeed(ball);
@@ -23885,7 +23885,7 @@ var Player = class {
     contactAt /= s;
     windowEnd /= s;
     dur /= s;
-    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, side, aimX, aimY };
+    this.swing = { stroke, variant, t: 0, contactAt, windowEnd, dur, done: false, hitBall: false, side, bestQ: 0, boost: 1, aimX, aimY };
     this.lastStroke = stroke;
     this.lastVariant = variant;
     this.lastSide = side;
@@ -24099,6 +24099,7 @@ var MatchScore = class {
 };
 
 // src/game/match.ts
+var rateQuality = (q, serve) => q >= (serve ? 0.85 : 0.9) ? "perfect" : q >= 0.72 ? "nice" : q >= 0.5 ? "ok" : "weak";
 var emptyStats = () => ({
   aces: 0,
   doubleFaults: 0,
@@ -24123,6 +24124,14 @@ var Match = class {
   events = [];
   recordEvents = true;
   ballVisible = false;
+  /** Medidor de súper cop (0..1) de cada jugador. */
+  meter = [0, 0];
+  /** Segons de joc que queden de càmera lenta (després d'un súper cop). */
+  slowT = 0;
+  /** Segons reals d'aturada d'imatge (impacte). Només el llegeix el runner. */
+  hitStop = 0;
+  /** La pilota va encesa (súper cop) fins que el rival la torna. */
+  fireBall = false;
   // Estat de la jugada
   lastHitter = -1;
   bounced = false;
@@ -24177,9 +24186,14 @@ var Match = class {
   get names() {
     return [this.cfg.p0.name, this.cfg.p1.name];
   }
+  /** Factor de temps (càmera lenta durant un súper cop). */
+  get timeScale() {
+    return this.slowT > 0 ? 0.35 : 1;
+  }
   // ---------------------------------------------------------------- pas
   step(dt) {
     this.time += dt;
+    if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dt);
     if (this.phase !== "match_end") this.stats.duration += dt;
     const intents = [NO_INTENT, NO_INTENT];
     for (const i of [0, 1]) {
@@ -24254,6 +24268,7 @@ var Match = class {
   }
   setupPoint(first) {
     this.placePlayers();
+    this.fireBall = false;
     for (const p of this.players) p.recover(0.05);
     const ps = this.players[this.server];
     this.serveStage = 1;
@@ -24367,12 +24382,15 @@ var Match = class {
       if (sw.t >= sw.contactAt) {
         if (this.canHit(p)) {
           const q = contactQuality(p, this.ball, sw.stroke);
-          if (q.q > 0 && (q.q >= 0.5 || sw.t >= sw.windowEnd - 0.02)) {
+          const passedPeak = sw.bestQ >= 0.5 && q.q < sw.bestQ - 0.015;
+          const gone = q.q <= 0 && sw.bestQ >= 0.5;
+          if (q.q > 0 && (q.q >= 0.9 || passedPeak || sw.t >= sw.windowEnd - 0.02) || gone) {
             sw.done = true;
             sw.hitBall = true;
-            this.executeHit(p, q.q);
+            this.executeHit(p, passedPeak || gone ? Math.max(q.q, sw.bestQ) : q.q);
             continue;
           }
+          if (q.q > sw.bestQ) sw.bestQ = q.q;
         }
         if (sw.t >= sw.windowEnd) {
           sw.done = true;
@@ -24391,7 +24409,27 @@ var Match = class {
     const b = this.ball;
     const isServe = sw.stroke === "serve";
     const serve = isServe ? this.serveCtx : null;
+    const rating = rateQuality(quality, isServe);
+    let superShot = false;
+    sw.boost = rating === "perfect" ? 1.1 : rating === "weak" ? 0.88 : 1;
+    if (this.meter[p.idx] >= 1 && (rating === "perfect" || rating === "nice")) {
+      superShot = true;
+      sw.boost = isServe ? 1.2 : 1.3;
+      quality = 1;
+    }
     const res = buildHit(p, b, sw, quality, this.rng, serve);
+    if (superShot) {
+      this.meter[p.idx] = 0;
+      this.fireBall = true;
+      this.slowT = 0.14;
+      this.hitStop = 0.09;
+    } else {
+      this.fireBall = false;
+      let gain = rating === "perfect" ? 0.18 : rating === "nice" ? 0.03 : rating === "ok" ? 0.01 : 0;
+      if (this.rallyHits >= 4) gain += 0.01;
+      this.meter[p.idx] = Math.min(1, this.meter[p.idx] + gain);
+      if (rating === "perfect") this.hitStop = 0.05;
+    }
     b.vx = res.vx;
     b.vy = res.vy;
     b.vz = res.vz;
@@ -24425,6 +24463,8 @@ var Match = class {
       variant: sw.variant,
       power: res.power,
       quality,
+      rating,
+      superShot,
       kmh: res.kmh,
       x: b.x,
       y: b.y,
@@ -25811,7 +25851,7 @@ function Champion({ champion, isHuman, onBracket, onMenu }) {
 }
 
 // src/ui/MatchScreen.tsx
-var import_react8 = __toESM(require_react(), 1);
+var import_react9 = __toESM(require_react(), 1);
 
 // src/controls/input.ts
 var InputManager = class {
@@ -25928,6 +25968,7 @@ var HumanController = class {
       const canStart = !p.swing && (m.phase === "rally" && p.swingCool <= 0 || m.phase === "serve_wait" || m.phase === "toss");
       if (canStart) hit = inp.takeHit();
     }
+    if (hit === "slice" && m.phase === "rally" && aimY < -0.55) hit = "lob";
     if (m.phase === "point_end" || m.phase === "intro" || m.phase === "match_end") inp.clear();
     return {
       mx,
@@ -26180,6 +26221,11 @@ var Crowd = class {
   /** Impuls per zones (per exemple un costat s'alça). */
   flash = 0;
   wave = -1;
+  /** Salt col·lectiu i badall (sorpresa) amb decaïment. */
+  jumpT = 0;
+  gaspT = 0;
+  teamA = "#e63946";
+  teamB = "#3498db";
   constructor() {
     const seats = buildSeats();
     const p = newProj();
@@ -26203,10 +26249,28 @@ var Crowd = class {
         skin: SKINS[(seat.hue * 7 + Math.floor(seat.phase * 10)) % SKINS.length],
         hair: HAIRS[(seat.hue * 3 + Math.floor(seat.phase * 7)) % HAIRS.length],
         shirt: SHIRTS[seat.hue % SHIRTS.length],
-        depth: p.depth
+        depth: p.depth,
+        // ~1 de cada 9 aficionats porta una bandera d'un dels dos jugadors
+        flag: (seat.hue * 5 + Math.floor(seat.phase * 13)) % 9 === 0 ? (seat.hue + Math.floor(seat.phase * 4) & 1) === 0 ? 1 : 2 : 0
       });
     }
     this.spots.sort((a, b) => b.depth - a.depth);
+  }
+  setTeams(a, b) {
+    this.teamA = a;
+    this.teamB = b;
+  }
+  /** Salt col·lectiu amb els braços amunt. */
+  jump() {
+    this.jumpT = 1;
+  }
+  /** Sorpresa: mans al cap i cos cap enrere. */
+  gasp() {
+    this.gaspT = 0.9;
+  }
+  /** Onada de l'estadi. */
+  startWave() {
+    this.wave = 0;
   }
   cheer(level) {
     this.excitement = Math.min(1, Math.max(this.excitement, level));
@@ -26216,6 +26280,8 @@ var Crowd = class {
   update(dt) {
     this.excitement = Math.max(0.12, this.excitement - dt * 0.28);
     this.flash = Math.max(0, this.flash - dt * 1.5);
+    this.jumpT = Math.max(0, this.jumpT - dt * 0.9);
+    this.gaspT = Math.max(0, this.gaspT - dt);
     if (this.wave >= 0) {
       this.wave += dt * 14;
       if (this.wave > 60) this.wave = -1;
@@ -26233,7 +26299,7 @@ var Crowd = class {
   }
   draw(ctx, time) {
     const e = this.excitement;
-    if (e <= IDLE_MAX && this.wave < 0) {
+    if (e <= IDLE_MAX && this.wave < 0 && this.jumpT <= 0 && this.gaspT <= 0) {
       this.idleLayer ??= this.buildIdleLayer();
       ctx.drawImage(this.idleLayer, 0, 0);
     } else {
@@ -26253,13 +26319,27 @@ var Crowd = class {
       const ph = seat.phase;
       let bob = Math.sin(time * (2 + e * 7) + ph) * (0.3 + e * 1.1);
       let arms = e > 0.55 && Math.sin(ph * 5 + time * 6) > 0.1;
+      let armsUp = false;
+      let hands = false;
       if (animated && this.wave >= 0) {
         const wx = seat.zone === "far" ? seat.x + 22 : seat.zone === "left" ? 44 + (20 - seat.y) : 44 + 22 + 44 + seat.y;
         const d = this.wave - wx * 0.5;
         if (d > -2 && d < 4) {
           arms = true;
-          bob -= 1.2;
+          armsUp = true;
+          bob -= 2.4;
         }
+      }
+      if (animated && this.jumpT > 0) {
+        bob -= this.jumpT * 2.6 * Math.abs(Math.sin(time * 9 + ph * 3));
+        arms = true;
+        armsUp = true;
+      }
+      if (animated && this.gaspT > 0.3 && Math.sin(ph * 11) > -0.2) {
+        hands = true;
+        arms = false;
+        armsUp = false;
+        bob += 0.8;
       }
       const by = Math.round(s.sy + bob);
       const x = s.x;
@@ -26267,10 +26347,29 @@ var Crowd = class {
       rect(ctx, s.hx, by - s.hw, s.hw, s.hw, s.skin);
       rect(ctx, s.hx, by - s.hw, s.hw, s.hairH, s.hair);
       if (arms) {
-        px(ctx, x - 1, by - 2, s.skin, 1);
-        px(ctx, x + s.w, by - 2, s.skin, 1);
-        px(ctx, x - 1, by - 1, s.skin, 1);
-        px(ctx, x + s.w, by - 1, s.skin, 1);
+        const up = armsUp ? 3 : 0;
+        px(ctx, x - 1, by - 2 - up, s.skin, 1);
+        px(ctx, x + s.w, by - 2 - up, s.skin, 1);
+        px(ctx, x - 1, by - 1 - up, s.skin, 1);
+        px(ctx, x + s.w, by - 1 - up, s.skin, 1);
+        if (armsUp) {
+          px(ctx, x - 1, by - 1, s.skin, 1);
+          px(ctx, x + s.w, by - 1, s.skin, 1);
+        }
+      }
+      if (hands) {
+        px(ctx, s.hx - 1, by - s.hw, s.skin, 1);
+        px(ctx, s.hx + s.hw, by - s.hw, s.skin, 1);
+      }
+      if (animated && s.flag && e > 0.3) {
+        const col = s.flag === 1 ? this.teamA : this.teamB;
+        const fw = Math.max(3, s.w);
+        const fh = Math.max(2, Math.round(s.w * 0.6));
+        const top = by - s.hw - 4;
+        const wav = Math.round(Math.sin(time * 8 + ph * 6));
+        rect(ctx, x + s.w, top, 1, s.hw + 4 + (arms ? 0 : 2), "#c9c9c9");
+        rect(ctx, x + s.w + 1, top + wav, fw, fh, col);
+        rect(ctx, x + s.w + 1, top + wav, fw, 1, "#ffffff");
       }
     }
   }
@@ -26325,6 +26424,9 @@ var Renderer = class {
   particles = [];
   marks = [];
   popups = [];
+  floaters = [];
+  teamsSet = false;
+  lastMeterFull = [false, false];
   trail = [];
   judges = [
     { x: -7.6, y: -11.9, signal: 0 },
@@ -26412,6 +26514,7 @@ var Renderer = class {
             });
           }
           if (e.stroke === "smash" || e.stroke === "serve" && e.power > 0.9) this.shake = 0.12;
+          this.hitFeedback(e);
           break;
         }
         case "fault":
@@ -26443,11 +26546,18 @@ var Renderer = class {
           break;
         case "point":
           if (e.reason === "ace") this.popup("ACE!", "#ffe066");
-          this.crowd.cheer(e.reason === "ace" ? 0.85 : 0.5);
+          if (e.reason === "ace" || e.reason === "winner") {
+            this.crowd.cheer(e.reason === "ace" ? 0.9 : 0.65);
+            if (e.reason === "ace" || e.rally >= 8) this.crowd.jump();
+          } else {
+            this.crowd.cheer(0.3);
+            this.crowd.gasp();
+          }
           break;
         case "game":
           this.popup("JOC", "#ffffff");
           this.crowd.cheer(0.9);
+          this.crowd.jump();
           break;
         case "set":
           this.popup("SET!", "#ffe066");
@@ -26455,10 +26565,90 @@ var Renderer = class {
           break;
         case "crowd":
           this.crowd.cheer(e.intensity * (e.kind === "gasp" ? 0.6 : 1));
+          if (e.kind === "gasp" || e.kind === "ooh") this.crowd.gasp();
           break;
         default:
           break;
       }
+    }
+  }
+  /** Valoració del cop: text flotant, esclat de partícules, flaix i tremolor als súper cops. */
+  hitFeedback(e) {
+    const mine = this.humanIdx === e.player;
+    if (e.superShot) {
+      this.floaters.push({ text: "SUPER SHOT!", color: "#ff8a2a", x: e.x, y: e.y, z: e.z + 1.1, t: 0, dur: 1.2, size: 2 });
+      this.flashWhite = 0.55;
+      this.shake = 0.3;
+      this.crowd.cheer(1);
+      this.crowd.jump();
+      this.crowd.startWave();
+      for (let i = 0; i < 22; i++) {
+        this.particles.push({
+          x: e.x,
+          y: e.y,
+          z: e.z,
+          vx: (Math.random() - 0.5) * 7,
+          vy: (Math.random() - 0.5) * 7,
+          vz: Math.random() * 4,
+          life: 0,
+          max: 0.35 + Math.random() * 0.25,
+          color: ["#ff4a1a", "#ff9a1a", "#ffe066"][i % 3]
+        });
+      }
+      return;
+    }
+    if (e.rating === "perfect" || e.rating === "nice") {
+      const perfect = e.rating === "perfect";
+      if (mine || perfect && this.humanIdx === null) {
+        this.floaters.push({ text: perfect ? "PERFECT!" : "NICE!", color: perfect ? "#ffe066" : "#8cf0ff", x: e.x, y: e.y, z: e.z + 0.9, t: 0, dur: perfect ? 0.9 : 0.6, size: perfect ? 2 : 1 });
+      }
+      if (perfect) {
+        this.flashWhite = Math.max(this.flashWhite, 0.18);
+        for (let i = 0; i < 12; i++) {
+          this.particles.push({
+            x: e.x,
+            y: e.y,
+            z: e.z,
+            vx: Math.cos(i / 12 * 6.283) * 3.2,
+            vy: Math.sin(i / 12 * 6.283) * 3.2,
+            vz: (Math.random() - 0.2) * 2,
+            life: 0,
+            max: 0.28,
+            color: i % 2 ? "#ffe066" : "#ffffff"
+          });
+        }
+      }
+    }
+  }
+  drawFloaters(ctx, dt) {
+    const p = this.proj;
+    for (const f of this.floaters) f.t += dt;
+    this.floaters = this.floaters.filter((f) => f.t < f.dur);
+    for (const f of this.floaters) {
+      const k = f.t / f.dur;
+      project(f.x, f.y, f.z + k * 0.5, p);
+      if (k > 0.7 && Math.floor(f.t * 20) % 2 === 0) continue;
+      drawText(ctx, f.text, Math.round(clamp(p.sx, 30, W - 30)), Math.round(p.sy), f.color, f.size, "#0b1230", "center");
+    }
+  }
+  /** Medidor de súper cop de cada jugador (a la part inferior). */
+  drawMeters(ctx, m) {
+    if (m.phase === "intro") return;
+    const bw = 56;
+    for (const i of [0, 1]) {
+      const x = i === 0 ? 6 : W - 6 - bw;
+      const y = H - 10;
+      const v = m.meter[i];
+      const full = v >= 1;
+      rect(ctx, x - 1, y - 1, bw + 2, 6, "#05070d");
+      rect(ctx, x, y, bw, 4, "#1a2240");
+      const fw = Math.round(bw * v);
+      const blink = full && Math.floor(this.time * 8) % 2 === 0;
+      rect(ctx, x, y, fw, 4, full ? blink ? "#ffffff" : "#ff9a1a" : "#ffb347");
+      rect(ctx, x, y, fw, 1, full ? "#ffe066" : "#ffd98a");
+      drawText(ctx, full ? "SUPER!" : "SUPER", x, y - 8, full ? "#ffe066" : "#9fb4e8");
+      if (full && !this.lastMeterFull[i] && this.humanIdx === i) this.popup("SUPER A PUNT!", "#ff9a1a");
+      this.lastMeterFull[i] = full;
     }
   }
   popup(text, color) {
@@ -26469,6 +26659,10 @@ var Renderer = class {
   draw(m, dt) {
     const ctx = this.ctx;
     this.time += dt;
+    if (!this.teamsSet) {
+      this.teamsSet = true;
+      this.crowd.setTeams(m.players[0].def.look.shirt, m.players[1].def.look.shirt);
+    }
     this.crowd.update(dt);
     this.umpireArm = Math.max(0, this.umpireArm - dt);
     for (const j of this.judges) j.signal = Math.max(0, j.signal - dt);
@@ -26490,6 +26684,8 @@ var Renderer = class {
     list.sort((a, b) => a.key - b.key);
     for (const d of list) d.draw();
     this.drawParticles(ctx, dt);
+    this.drawFloaters(ctx, dt);
+    this.drawMeters(ctx, m);
     this.drawPopups(ctx, dt);
     ctx.restore();
     ctx.drawImage(this.vignette, 0, 0);
@@ -26630,8 +26826,18 @@ var Renderer = class {
     project(b.x, b.y, b.z, p);
     const sp = Math.hypot(b.vx, b.vy, b.vz);
     this.trail.push({ sx: p.sx, sy: p.sy });
-    if (this.trail.length > 7) this.trail.shift();
-    if (sp > 14 && m.phase !== "serve_wait") {
+    const maxTrail = m.fireBall ? 16 : 7;
+    if (this.trail.length > maxTrail) this.trail.shift();
+    if (m.fireBall && sp > 8) {
+      const n = this.trail.length;
+      for (let i = 0; i < n - 1; i++) {
+        const t = this.trail[i];
+        const f = i / n;
+        const flick = Math.floor(this.time * 30 + i) % 2;
+        const c = f < 0.3 ? "#7a1a0a" : f < 0.55 ? "#d8401a" : f < 0.8 ? "#ff9a1a" : "#ffe066";
+        px(ctx, t.sx, t.sy - flick, c, f > 0.5 ? 3 : 2);
+      }
+    } else if (sp > 14 && m.phase !== "serve_wait") {
       for (let i = 0; i < this.trail.length - 1; i++) {
         const t = this.trail[i];
         const c = i < 2 ? "#7a9a1a" : i < 4 ? "#a9d02a" : "#cdee3a";
@@ -26764,7 +26970,8 @@ var GameRunner = class {
     this.last = ts;
     if (dt > 0.1) dt = 0.1;
     if (!this.paused) {
-      this.acc += dt * TIME_SCALE;
+      if (this.match.hitStop > 0) this.match.hitStop = Math.max(0, this.match.hitStop - dt);
+      else this.acc += dt * TIME_SCALE * this.match.timeScale;
       let n = 0;
       while (this.acc >= DT && n < 40) {
         this.match.step(DT);
@@ -26800,7 +27007,10 @@ var GameRunner = class {
     for (const e of events) {
       switch (e.type) {
         case "hit":
-          if (!attract) audio.hit(e.stroke, e.variant, e.power);
+          if (!attract) {
+            audio.hit(e.stroke, e.variant, e.power);
+            if (e.superShot) audio.cheer(0.8);
+          }
           break;
         case "bounce":
           if (!attract) audio.bounce(e.vz, e.speed);
@@ -27080,10 +27290,8 @@ function OptionsScreen({ settings, onChange, onBack }) {
 }
 var CONTROL_ROWS = [
   ["WASD / FLETXES", "MOURE I APUNTAR EL COP"],
-  ["ESPAI", "COP PLA \xB7 SERVEI (DUES PULSACIONS)"],
-  ["J", "SLICE (CAP I BAIX, BOT BAIX)"],
-  ["K", "TOPSPIN (ARC ALT I BOT FORT)"],
-  ["L", "LOB (PER SOBRE DEL RIVAL)"],
+  ["ESPAI", "COP \xB7 SERVEI (DUES PULSACIONS)"],
+  ["J", "EFECTE: SLICE \xB7 J + AVALL = GLOBUS"],
   ["SHIFT", "C\xD3RRER (GASTA RESIST\xC8NCIA)"],
   ["P / ESC", "PAUSA"],
   ["RATOL\xCD", "MEN\xDAS"]
@@ -27099,7 +27307,7 @@ function ControlsScreen({ onBack }) {
     /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
       PixelPara,
       {
-        text: "SERVEI: PR\xC9MER UNA VEGADA PER LLAN\xC7AR LA PILOTA I UNA ALTRA PERQU\xC8 SIGUI EN EL PUNT M\xC9S ALT. AMB EL PAD APUNTES: ESQUERRA/DRETA = DIRECCI\xD3, AMUNT = M\xC9S FORT I PROFUND, AVALL = SUAU I CURT. EN M\xD2BIL: JOYSTICK A L'ESQUERRA I BOTONS A LA DRETA.",
+        text: "TIMING: PREM EL COP QUAN LA PILOTA ARRIBA AL PUNT EXACTE PER FER UN COP PERFECT (M\xC9S FORT I PREC\xCDS). ELS COPS BONS OMPLEN EL MEDIDOR SUPER; QUAN \xC9S PLE, EL SEG\xDCENT BON COP \xC9S UN S\xDAPER COP. SERVEI: PR\xC9MER UNA VEGADA PER LLAN\xC7AR LA PILOTA I UNA ALTRA PERQU\xC8 SIGUI EN EL PUNT M\xC9S ALT. AMB EL PAD APUNTES: ESQUERRA/DRETA = DIRECCI\xD3, AMUNT = M\xC9S FORT I PROFUND, AVALL = SUAU I CURT. EN M\xD2BIL: JOYSTICK A L'ESQUERRA I BOTONS A LA DRETA.",
         maxChars: 52,
         scale: 1,
         color: "#cfe0ff",
@@ -27160,7 +27368,7 @@ function PauseMenu({ settings, onSettings, onResume, onQuit, touch, ps, compact 
         ] }, k)),
         touch ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "crow", children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PixelText, { text: "BOTONS", scale: 1, color: "#8cf0ff" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PixelText, { text: "COP/SERVEI \xB7 SLICE \xB7 TOP \xB7 LOB \xB7 C\xD3RRER", scale: 1, color: "#ffffff" })
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PixelText, { text: "COP/SERVEI \xB7 EFECTE (SLICE / GLOBUS) \xB7 C\xD3RRER", scale: 1, color: "#ffffff" })
         ] }) : null
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PixelButton, { label: "ENRERE", scale: sc, onClick: () => setPage("main") })
@@ -27235,40 +27443,82 @@ function TouchControls({ input, serving, ps }) {
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "tbtns", children: [
-      btn(serving ? "SERVEI" : "COP", "flat", "tb-main"),
-      btn("SLICE", "slice", "tb-a"),
-      btn("TOP", "top", "tb-b"),
-      btn("LOB", "lob", "tb-c"),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-        "button",
-        {
-          className: "tbtn tb-run",
-          onPointerDown: (e) => {
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            input.touchSprint = true;
-          },
-          onPointerUp: () => input.touchSprint = false,
-          onPointerCancel: () => input.touchSprint = false,
-          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(PixelText, { text: "C\xD3RRER", scale: Math.max(1, ps - 1) })
-        }
-      )
+      btn("EFECTE", "slice", "tb-a"),
+      btn(serving ? "SERVEI" : "COP", "flat", "tb-main")
     ] })
   ] });
 }
 
-// src/ui/MatchScreen.tsx
+// src/ui/VsIntro.tsx
+var import_react8 = __toESM(require_react(), 1);
 var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
-function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false, onFinish, onQuit, onSettings }) {
-  const canvasRef = (0, import_react8.useRef)(null);
-  const runnerRef = (0, import_react8.useRef)(null);
-  const inputRef = (0, import_react8.useRef)(new InputManager());
-  const vp = useViewport();
-  const [hud, setHud] = (0, import_react8.useState)(null);
-  const [paused, setPaused] = (0, import_react8.useState)(false);
-  const [hint, setHint] = (0, import_react8.useState)(true);
-  const touch = !attract && (settings.touch === "on" || settings.touch === "auto" && vp.coarse);
+var STATS = [
+  ["VELOCITAT", "speed"],
+  ["POTENCIA", "power"],
+  ["PRECISIO", "precision"],
+  ["RESISTENCIA", "stamina"]
+];
+function Card2({ def, side, size }) {
+  const color = side === "l" ? "#8cc0ff" : "#ff9a8c";
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `vs-card vs-${side}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-portrait", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(SpritePreview, { def, s: 46, width: 84, height: 112, scale: size === 3 ? 4 : size === 2 ? 3 : 2 }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.name.toUpperCase(), scale: size === 1 ? 2 : 3, color: "#ffffff" }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.style.label.toUpperCase(), scale: 1, color }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-stats", children: STATS.map(([label, k]) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-stat", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: label, scale: 1, color: "#dfe8ff" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-bar", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-fill", style: { width: `${def.stats[k]}%`, background: color } }) })
+    ] }, k)) })
+  ] });
+}
+function VsIntro({ a, b, roundLabel, size, onDone }) {
+  const [leaving, setLeaving] = (0, import_react8.useState)(false);
+  const doneRef = (0, import_react8.useRef)(false);
+  const born = (0, import_react8.useRef)(performance.now());
   (0, import_react8.useEffect)(() => {
+    const finish = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setLeaving(true);
+      window.setTimeout(onDone, 260);
+    };
+    const t = window.setTimeout(finish, 3600);
+    const skip = () => {
+      if (performance.now() - born.current > 700) finish();
+    };
+    window.addEventListener("keydown", skip);
+    window.addEventListener("pointerdown", skip);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", skip);
+      window.removeEventListener("pointerdown", skip);
+    };
+  }, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `vs ${leaving ? "vs-out" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-bg" }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-round", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: roundLabel, scale: size === 1 ? 1 : 2, color: "#ffe066" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-row", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: a, side: "l", size }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-mid", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "VS", scale: size === 3 ? 14 : size === 2 ? 10 : 6, color: "#ffe066", outline: "#7a1010" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Card2, { def: b, side: "r", size })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-skip", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "PREM QUALSEVOL TECLA", scale: 1, color: "#cfe0ff" }) })
+  ] });
+}
+
+// src/ui/MatchScreen.tsx
+var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false, onFinish, onQuit, onSettings }) {
+  const canvasRef = (0, import_react9.useRef)(null);
+  const runnerRef = (0, import_react9.useRef)(null);
+  const inputRef = (0, import_react9.useRef)(new InputManager());
+  const vp = useViewport();
+  const [hud, setHud] = (0, import_react9.useState)(null);
+  const [paused, setPaused] = (0, import_react9.useState)(false);
+  const [hint, setHint] = (0, import_react9.useState)(false);
+  const [vs, setVs] = (0, import_react9.useState)(!attract);
+  const vsRef = (0, import_react9.useRef)(!attract);
+  const touch = !attract && (settings.touch === "on" || settings.touch === "auto" && vp.coarse);
+  (0, import_react9.useEffect)(() => {
     const input = inputRef.current;
     const human = setup.humanIdx === 0 ? new HumanController(input) : null;
     const controllers = [human ?? new AIController(setup.seed + 1), new AIController(setup.seed + 2)];
@@ -27283,24 +27533,34 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
       onEnd: onFinish
     });
     runnerRef.current = runner;
+    if (/[?&]debug/.test(window.location.search)) window.__match = match;
     input.onPause = () => {
+      if (vsRef.current) return;
       const p = !runner.paused;
       runner.setPaused(p);
       setPaused(p);
     };
     runner.start();
-    const t = window.setTimeout(() => setHint(false), 7e3);
+    if (vsRef.current) runner.setPaused(true);
     return () => {
-      window.clearTimeout(t);
       runner.stop();
       input.onPause = null;
       runnerRef.current = null;
     };
   }, [setup, difficulty, attract]);
-  (0, import_react8.useEffect)(() => {
+  (0, import_react9.useEffect)(() => {
+    if (vsRef.current) return;
     runnerRef.current?.setPaused(paused);
   }, [paused]);
-  (0, import_react8.useEffect)(() => {
+  const endVs = () => {
+    vsRef.current = false;
+    setVs(false);
+    runnerRef.current?.setPaused(false);
+    audio.unlock();
+    setHint(true);
+    window.setTimeout(() => setHint(false), 6500);
+  };
+  (0, import_react9.useEffect)(() => {
     runnerRef.current?.setAssist(settings.assist);
   }, [settings.assist]);
   const togglePause = () => {
@@ -27311,19 +27571,20 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
     setPaused(p);
     if (!p) audio.unlock();
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `stage ${vp.portrait ? "portrait" : "landscape"} ${touch ? "with-touch" : ""} ${paused ? "is-paused" : ""}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "view", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("canvas", { ref: canvasRef, className: "game-canvas" }),
-      !attract && hud ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Hud, { hud, ps: vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps, onPause: togglePause }) : null,
-      !attract ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "round-tag", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: roundLabel, scale: 1, color: "#9fb4e8" }) }) : null,
-      hint && !attract && !paused ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "hint", children: touch ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(import_jsx_runtime9.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "JOYSTICK: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "COP/SERVEI \xB7 SLICE \xB7 TOP \xB7 LOB", scale: 1, color: "#ffe066" })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(import_jsx_runtime9.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "WASD / FLETXES: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: "ESPAI COP/SERVEI  J SLICE  K TOPSPIN  L LOB  SHIFT C\xD3RRER", scale: 1, color: "#ffe066" })
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: `stage ${vp.portrait ? "portrait" : "landscape"} ${touch ? "with-touch" : ""} ${paused ? "is-paused" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "view", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("canvas", { ref: canvasRef, className: "game-canvas" }),
+      !attract && hud ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Hud, { hud, ps: vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps, onPause: togglePause }) : null,
+      !attract ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "round-tag", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: roundLabel, scale: 1, color: "#9fb4e8" }) }) : null,
+      vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VsIntro, { a: setup.p0, b: setup.p1, roundLabel, size: vp.portrait || vp.h < 520 ? 1 : vp.h < 760 ? 2 : 3, onDone: endVs }) : null,
+      hint && !attract && !paused && !vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "hint", children: touch ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "JOYSTICK: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "COP: PREM AL MOMENT EXACTE \xB7 EFECTE: SLICE", scale: 1, color: "#ffe066" })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "WASD / FLETXES: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "ESPAI COP/SERVEI  J EFECTE (J + AVALL = LOB)  SHIFT C\xD3RRER", scale: 1, color: "#ffe066" })
       ] }) }) : null,
-      paused && !attract ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      paused && !attract ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
         PauseMenu,
         {
           settings,
@@ -27339,12 +27600,12 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
         }
       ) : null
     ] }),
-    touch ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(TouchControls, { input: inputRef.current, serving: !!hud && hud.humanServing && (hud.phase === "serve_wait" || hud.phase === "toss"), ps: vp.ps >= 2 ? 2 : 1 }) : null
+    touch ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(TouchControls, { input: inputRef.current, serving: !!hud && hud.humanServing && (hud.phase === "serve_wait" || hud.phase === "toss"), ps: vp.ps >= 2 ? 2 : 1 }) : null
   ] });
 }
 
 // src/ui/Result.tsx
-var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
 var pct = (a, b) => b > 0 ? `${Math.round(100 * a / b)}%` : "-";
 function Result({ match, roundLabel, eliminated, isFinal, onContinue }) {
   const vp = useViewport();
@@ -27365,22 +27626,22 @@ function Result({ match, roundLabel, eliminated, isFinal, onContinue }) {
     ["PUNT M\xC9S LLARG", `${st.longestRally} COPS`, `${st.longestRally} COPS`]
   ];
   const mins = Math.max(1, Math.round(st.duration / 60));
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "panel-screen result", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: roundLabel, scale: Math.max(1, s - 1), color: "#9fb4e8" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: humanWon ? "VICT\xD2RIA!" : match.cfg.humanIdx !== null ? "DERROTA" : "FI DEL PARTIT", scale: s + 2, color: humanWon ? "#6cff6c" : "#ff8a7a" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "resline", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: match.cfg.p0.shortName, scale: s + 1, color: w === 0 ? "#ffe066" : "#ffffff" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: formatSets(match.score.sets), scale: s + 1, color: "#ffffff" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: match.cfg.p1.shortName, scale: s + 1, color: w === 1 ? "#ffe066" : "#ffffff" })
+  return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "panel-screen result", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: roundLabel, scale: Math.max(1, s - 1), color: "#9fb4e8" }),
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: humanWon ? "VICT\xD2RIA!" : match.cfg.humanIdx !== null ? "DERROTA" : "FI DEL PARTIT", scale: s + 2, color: humanWon ? "#6cff6c" : "#ff8a7a" }),
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "resline", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: match.cfg.p0.shortName, scale: s + 1, color: w === 0 ? "#ffe066" : "#ffffff" }),
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: formatSets(match.score.sets), scale: s + 1, color: "#ffffff" }),
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: match.cfg.p1.shortName, scale: s + 1, color: w === 1 ? "#ffe066" : "#ffffff" })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: `GUANYADOR: ${(w === 0 ? match.cfg.p0 : match.cfg.p1).name.toUpperCase()}`, scale: s, color: "#ffe066" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "table stats", children: rows.map(([label, x, y]) => /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "srow2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: x, scale: s, color: "#ffffff" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: label, scale: Math.max(1, s - 1), color: "#9fb4e8" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: label === "PUNT M\xC9S LLARG" ? "" : y, scale: s, color: "#ffffff" })
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: `GUANYADOR: ${(w === 0 ? match.cfg.p0 : match.cfg.p1).name.toUpperCase()}`, scale: s, color: "#ffe066" }),
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "table stats", children: rows.map(([label, x, y]) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "srow2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: x, scale: s, color: "#ffffff" }),
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: label, scale: Math.max(1, s - 1), color: "#9fb4e8" }),
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: label === "PUNT M\xC9S LLARG" ? "" : y, scale: s, color: "#ffffff" })
     ] }, label)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: `DURADA: ${mins} MIN DE JOC`, scale: 1, color: "#6f86bd" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: `DURADA: ${mins} MIN DE JOC`, scale: 1, color: "#6f86bd" }),
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
       PixelButton,
       {
         label: eliminated ? "VEURE QUADRE" : isFinal && humanWon ? "RECOLLIR EL TROFEU" : "CONTINUAR",
@@ -27393,15 +27654,15 @@ function Result({ match, roundLabel, eliminated, isFinal, onContinue }) {
 }
 
 // src/ui/SimScreen.tsx
-var import_react9 = __toESM(require_react(), 1);
-var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
+var import_react10 = __toESM(require_react(), 1);
+var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
 function SimScreen({ m, seed, onDone }) {
   const vp = useViewport();
-  const [line2, setLine] = (0, import_react9.useState)("0-0");
-  const started = (0, import_react9.useRef)(false);
+  const [line2, setLine] = (0, import_react10.useState)("0-0");
+  const started = (0, import_react10.useRef)(false);
   const a = getPlayerDef(m.a);
   const b = getPlayerDef(m.b);
-  (0, import_react9.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     if (started.current) return;
     started.current = true;
     void simulateMatch(a, b, seed, (mm) => {
@@ -27411,32 +27672,32 @@ function SimScreen({ m, seed, onDone }) {
     }).then(onDone);
   }, [a, b, seed, onDone]);
   const s = vp.ps + 1;
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "panel-screen", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: "SIMULANT PARTIT", scale: s, color: "#ffe066" }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: a.name.toUpperCase(), scale: s }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: "CONTRA", scale: Math.max(1, s - 2), color: "#9fb4e8" }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: b.name.toUpperCase(), scale: s }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PixelText, { text: line2, scale: s + 1, color: "#8cf0ff" }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "spinner" })
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "panel-screen", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: "SIMULANT PARTIT", scale: s, color: "#ffe066" }),
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: a.name.toUpperCase(), scale: s }),
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: "CONTRA", scale: Math.max(1, s - 2), color: "#9fb4e8" }),
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: b.name.toUpperCase(), scale: s }),
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: line2, scale: s + 1, color: "#8cf0ff" }),
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "spinner" })
   ] });
 }
 
 // src/ui/App.tsx
-var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime13 = __toESM(require_jsx_runtime(), 1);
 var AUTOSIM = typeof location !== "undefined" && new URLSearchParams(location.search).has("autosim");
 function App() {
-  const [settings, setSettings] = (0, import_react10.useState)(loadSettings);
-  const [screen, setScreen] = (0, import_react10.useState)("title");
-  const tourRef = (0, import_react10.useRef)(null);
-  const [, bump] = (0, import_react10.useReducer)((x) => x + 1, 0);
-  const [current, setCurrent] = (0, import_react10.useState)(null);
-  const [finished, setFinished] = (0, import_react10.useState)(null);
-  const [ranking, setRanking] = (0, import_react10.useState)(loadRanking);
-  const [attractSeed, setAttractSeed] = (0, import_react10.useState)(11);
-  const [unlocked, setUnlocked] = (0, import_react10.useState)(false);
+  const [settings, setSettings] = (0, import_react11.useState)(loadSettings);
+  const [screen, setScreen] = (0, import_react11.useState)("title");
+  const tourRef = (0, import_react11.useRef)(null);
+  const [, bump] = (0, import_react11.useReducer)((x) => x + 1, 0);
+  const [current, setCurrent] = (0, import_react11.useState)(null);
+  const [finished, setFinished] = (0, import_react11.useState)(null);
+  const [ranking, setRanking] = (0, import_react11.useState)(loadRanking);
+  const [attractSeed, setAttractSeed] = (0, import_react11.useState)(11);
+  const [unlocked, setUnlocked] = (0, import_react11.useState)(false);
   const vp = useViewport();
   const tour = tourRef.current;
-  (0, import_react10.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     const f = () => {
       audio.unlock();
       audio.setSettings(settings.audio);
@@ -27449,22 +27710,22 @@ function App() {
       window.removeEventListener("keydown", f);
     };
   }, []);
-  (0, import_react10.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     saveSettings(settings);
     audio.setSettings(settings.audio);
   }, [settings]);
   const menuScreens = ["title", "select", "difficulty", "ranking", "options", "controls", "bracket", "sim", "result"];
-  (0, import_react10.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     if (!unlocked) return;
     if (menuScreens.includes(screen)) audio.playMusic("menu");
     else if (screen === "match") audio.stopMusic();
   }, [screen, unlocked]);
-  const attractSetup = (0, import_react10.useMemo)(() => {
+  const attractSetup = (0, import_react11.useMemo)(() => {
     const a = ROSTER[attractSeed % ROSTER.length];
     const b = ROSTER[(attractSeed * 3 + 1) % ROSTER.length === attractSeed % ROSTER.length ? (attractSeed + 2) % ROSTER.length : (attractSeed * 3 + 1) % ROSTER.length];
     return { p0: a, p1: b, humanIdx: null, seed: attractSeed };
   }, [attractSeed]);
-  const startTournament = (0, import_react10.useCallback)(() => {
+  const startTournament = (0, import_react11.useCallback)(() => {
     audio.unlock();
     tourRef.current = new Tournament(settings.playerId, settings.difficulty, (Date.now() & 65535) + 1);
     setScreen("bracket");
@@ -27485,7 +27746,7 @@ function App() {
     }
     bump();
   };
-  const onMatchFinish = (0, import_react10.useCallback)(
+  const onMatchFinish = (0, import_react11.useCallback)(
     (match) => {
       const t = tourRef.current;
       if (!t || !current) return;
@@ -27502,8 +27763,8 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [current]
   );
-  const [simM, setSimM] = (0, import_react10.useState)(null);
-  const onSimDone = (0, import_react10.useCallback)(
+  const [simM, setSimM] = (0, import_react11.useState)(null);
+  const onSimDone = (0, import_react11.useCallback)(
     (match) => {
       const t = tourRef.current;
       if (!t || !simM) return;
@@ -27528,7 +27789,7 @@ function App() {
   const showAttract = screen === "title" || screen === "select" || screen === "difficulty" || screen === "ranking" || screen === "options" || screen === "controls";
   switch (screen) {
     case "title":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
         Title,
         {
           settings,
@@ -27542,32 +27803,32 @@ function App() {
       );
       break;
     case "select":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PlayerSelect, { settings, onBack: () => setScreen("title"), onPick: (id) => {
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PlayerSelect, { settings, onBack: () => setScreen("title"), onPick: (id) => {
         setSettings({ ...settings, playerId: id });
         setScreen("title");
       } });
       break;
     case "difficulty":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(DifficultySelect, { settings, onBack: () => setScreen("title"), onPick: (d) => {
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(DifficultySelect, { settings, onBack: () => setScreen("title"), onPick: (d) => {
         setSettings({ ...settings, difficulty: d });
         setScreen("title");
       } });
       break;
     case "ranking":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(RankingScreen, { ranking, onBack: () => setScreen("title") });
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(RankingScreen, { ranking, onBack: () => setScreen("title") });
       break;
     case "options":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(OptionsScreen, { settings, onChange: setSettings, onBack: () => setScreen("title") });
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(OptionsScreen, { settings, onChange: setSettings, onBack: () => setScreen("title") });
       break;
     case "controls":
-      body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(ControlsScreen, { onBack: () => setScreen("title") });
+      body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(ControlsScreen, { onBack: () => setScreen("title") });
       break;
     case "bracket":
       if (tour) {
         const next = tour.nextMatch();
         const human = next ? tour.involvesHuman(next) && !AUTOSIM : false;
         const humanOut = tour.humanEliminated;
-        body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           BracketScreen,
           {
             tour,
@@ -27589,7 +27850,7 @@ function App() {
       break;
     case "match":
       if (current && tour) {
-        body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           MatchScreen,
           {
             setup: current.setup,
@@ -27606,7 +27867,7 @@ function App() {
       break;
     case "result":
       if (finished && current && tour) {
-        body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           Result,
           {
             match: finished,
@@ -27619,11 +27880,11 @@ function App() {
       }
       break;
     case "sim":
-      if (simM && tour) body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(SimScreen, { m: simM, seed: matchSeed(tour, simM), onDone: onSimDone });
+      if (simM && tour) body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(SimScreen, { m: simM, seed: matchSeed(tour, simM), onDone: onSimDone });
       break;
     case "champion":
       if (tour?.champion) {
-        body = /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        body = /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
           Champion,
           {
             champion: getPlayerDef(tour.champion),
@@ -27635,9 +27896,9 @@ function App() {
       }
       break;
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "app", children: [
-    showAttract ? /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "attract", "aria-hidden": "true", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "app", children: [
+    showAttract ? /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "attract", "aria-hidden": "true", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
         MatchScreen,
         {
           setup: attractSetup,
@@ -27650,9 +27911,9 @@ function App() {
         },
         attractSeed
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "attract-dim" })
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "attract-dim" })
     ] }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: `screen ${screen === "match" ? "screen-match" : ""}`, children: body })
+    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: `screen ${screen === "match" ? "screen-match" : ""}`, children: body })
   ] });
 }
 function BracketScreen({
@@ -27666,37 +27927,37 @@ function BracketScreen({
   onChampion,
   onMenu
 }) {
-  const [auto, setAuto] = (0, import_react10.useState)(true);
-  (0, import_react10.useEffect)(() => {
+  const [auto, setAuto] = (0, import_react11.useState)(true);
+  (0, import_react11.useEffect)(() => {
     if (!next || human || !auto) return;
     const t = window.setTimeout(onSim, 1600);
     return () => window.clearTimeout(t);
   }, [next, human, auto, onSim]);
   const nm = next ? `${getPlayerDef(next.a).shortName} - ${getPlayerDef(next.b).shortName}` : "";
-  return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "panel-screen", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: "QUADRE DEL TORNEIG", scale: 3, color: "#ffe066" }),
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(Bracket, { tour, scale }),
-    next ? /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(import_jsx_runtime12.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: `${ROUND_LABEL[next.round]}: ${nm}`, scale: 2, color: "#ffffff" }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "row", children: [
-        human ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: "JUGAR PARTIT", variant: "primary", scale: 3, onClick: onPlay }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(import_jsx_runtime12.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: "SIMULAR ARA", variant: "primary", onClick: onSim }),
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: auto ? "PAUSAR AUTO" : "AUTO ACTIVAT", onClick: () => setAuto(!auto) })
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "panel-screen", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelText, { text: "QUADRE DEL TORNEIG", scale: 3, color: "#ffe066" }),
+    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(Bracket, { tour, scale }),
+    next ? /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(import_jsx_runtime13.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelText, { text: `${ROUND_LABEL[next.round]}: ${nm}`, scale: 2, color: "#ffffff" }),
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "row", children: [
+        human ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: "JUGAR PARTIT", variant: "primary", scale: 3, onClick: onPlay }) : /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(import_jsx_runtime13.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: "SIMULAR ARA", variant: "primary", onClick: onSim }),
+          /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: auto ? "PAUSAR AUTO" : "AUTO ACTIVAT", onClick: () => setAuto(!auto) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: "SORTIR", variant: "danger", onClick: onMenu })
+        /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: "SORTIR", variant: "danger", onClick: onMenu })
       ] }),
-      humanOut ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelText, { text: "ELIMINAT: ES SIMULA EL FINAL DEL TORNEIG", scale: 1, color: "#ff8a7a" }) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "row", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: "VEURE EL CAMPI\xD3", variant: "primary", scale: 3, onClick: onChampion }),
-      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(PixelButton, { label: "MEN\xDA", onClick: onMenu })
+      humanOut ? /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelText, { text: "ELIMINAT: ES SIMULA EL FINAL DEL TORNEIG", scale: 1, color: "#ff8a7a" }) : null
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("div", { className: "row", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: "VEURE EL CAMPI\xD3", variant: "primary", scale: 3, onClick: onChampion }),
+      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(PixelButton, { label: "MEN\xDA", onClick: onMenu })
     ] })
   ] });
 }
 
 // src/main.tsx
-var import_jsx_runtime13 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime14 = __toESM(require_jsx_runtime(), 1);
 (0, import_client.createRoot)(document.getElementById("root")).render(
-  /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_react11.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(App, {}) })
+  /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(import_react12.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(App, {}) })
 );
 /*! Bundled license information:
 

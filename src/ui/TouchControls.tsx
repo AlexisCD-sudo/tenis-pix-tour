@@ -80,22 +80,8 @@ export function TouchControls({ input, serving, ps }: Props) {
         <div className="joy-knob" style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
       </div>
       <div className="tbtns">
+        {btn('EFECTE', 'slice', 'tb-a')}
         {btn(serving ? 'SERVEI' : 'COP', 'flat', 'tb-main')}
-        {btn('SLICE', 'slice', 'tb-a')}
-        {btn('TOP', 'top', 'tb-b')}
-        {btn('LOB', 'lob', 'tb-c')}
-        <button
-          className="tbtn tb-run"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-            input.touchSprint = true;
-          }}
-          onPointerUp={() => (input.touchSprint = false)}
-          onPointerCancel={() => (input.touchSprint = false)}
-        >
-          <PixelText text="CÓRRER" scale={Math.max(1, ps - 1)} />
-        </button>
       </div>
     </div>
   );

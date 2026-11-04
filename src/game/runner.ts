@@ -100,7 +100,9 @@ export class GameRunner {
     this.last = ts;
     if (dt > 0.1) dt = 0.1;
     if (!this.paused) {
-      this.acc += dt * TIME_SCALE;
+      // Aturada d'imatge als cops perfectes i càmera lenta als súper cops
+      if (this.match.hitStop > 0) this.match.hitStop = Math.max(0, this.match.hitStop - dt);
+      else this.acc += dt * TIME_SCALE * this.match.timeScale;
       let n = 0;
       while (this.acc >= DT && n < 40) {
         this.match.step(DT);
@@ -138,7 +140,10 @@ export class GameRunner {
     for (const e of events) {
       switch (e.type) {
         case 'hit':
-          if (!attract) audio.hit(e.stroke, e.variant, e.power);
+          if (!attract) {
+            audio.hit(e.stroke, e.variant, e.power);
+            if (e.superShot) audio.cheer(0.8);
+          }
           break;
         case 'bounce':
           if (!attract) audio.bounce(e.vz, e.speed);

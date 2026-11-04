@@ -18,6 +18,8 @@ const out = '/tmp/claude-0/-home-claude/21c9cfe3-56dc-5d1a-8863-0dc2785b5570/scr
     await page.waitForTimeout(1500);
   }
   await btn('JUGAR PARTIT').tap();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${out}/m2-vs.png` });
   await page.waitForTimeout(3500);
   await page.screenshot({ path: `${out}/m2-match.png` });
   await browser.close();
