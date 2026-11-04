@@ -22,7 +22,7 @@ function Card({ def, side, scale, stats }: { def: PlayerDef; side: 'l' | 'r'; sc
   return (
     <div className={`vs-card vs-${side}`}>
       <div className="vs-portrait">
-        <SpritePreview def={def} s={46} width={84} height={112} scale={scale} />
+        <SpritePreview key={def.id} def={def} s={46} width={84} height={112} scale={scale} />
       </div>
       <PixelText text={def.name.toUpperCase()} scale={scale >= 3 ? 3 : scale === 2 ? 2 : 1} color="#ffffff" />
       <PixelText text={def.style.label.toUpperCase()} scale={1} color={color} />

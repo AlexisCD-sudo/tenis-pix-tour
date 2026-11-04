@@ -21869,18 +21869,18 @@ var MENU_LEAD = [
   N
 ];
 var bassLine = (roots) => {
-  const out2 = [];
+  const out = [];
   for (const r of roots) {
-    for (let i = 0; i < 16; i++) out2.push(i % 4 === 0 ? i % 8 === 0 ? r : r + 12 : N);
+    for (let i = 0; i < 16; i++) out.push(i % 4 === 0 ? i % 8 === 0 ? r : r + 12 : N);
   }
-  return out2;
+  return out;
 };
 var arpLine = (chords) => {
-  const out2 = [];
+  const out = [];
   for (const c of chords) {
-    for (let i = 0; i < 16; i++) out2.push(i % 2 === 0 ? c[i / 2 % c.length] : N);
+    for (let i = 0; i < 16; i++) out.push(i % 2 === 0 ? c[i / 2 % c.length] : N);
   }
-  return out2;
+  return out;
 };
 var TRACKS = {
   menu: {
@@ -23162,8 +23162,8 @@ function reachOf(p) {
   return base + 0.25 * p.speedStat + (p.def.look.height - 1.85) * 0.6;
 }
 function idealContact(p, stroke) {
-  const off2 = stroke === "fh" ? 0.85 : stroke === "bh" ? -0.75 : stroke === "smash" ? 0.2 : stroke === "serve" ? 0.15 : 0.45;
-  return { x: p.x + p.rightX * off2, y: p.y + p.dirY * 0.35 };
+  const off = stroke === "fh" ? 0.85 : stroke === "bh" ? -0.75 : stroke === "smash" ? 0.2 : stroke === "serve" ? 0.15 : 0.45;
+  return { x: p.x + p.rightX * off, y: p.y + p.dirY * 0.35 };
 }
 function chooseStroke(p, ball, bounced, key) {
   const tc = 0.15;
@@ -24005,37 +24005,37 @@ var MatchScore = class {
   /** Marca el punt per a `w`. */
   pointWon(w) {
     const o = 1 - w;
-    const out2 = { gameWon: false, setWon: false, matchWon: false };
-    if (this.winner !== null) return out2;
+    const out = { gameWon: false, setWon: false, matchWon: false };
+    if (this.winner !== null) return out;
     this.points[w]++;
     if (this.tiebreak) {
       if (this.points[w] >= 7 && this.points[w] - this.points[o] >= 2) {
-        out2.gameWon = true;
+        out.gameWon = true;
         this.games[w]++;
         this.finishSet(w, [this.points[0], this.points[1]]);
-        out2.setWon = true;
-        out2.matchWon = this.winner !== null;
+        out.setWon = true;
+        out.matchWon = this.winner !== null;
         this.gameServer = 1 - this.tbFirst;
         this.tiebreak = false;
         this.points = [0, 0];
       }
-      return out2;
+      return out;
     }
     if (this.points[w] >= 4 && this.points[w] - this.points[o] >= 2) {
-      out2.gameWon = true;
+      out.gameWon = true;
       this.games[w]++;
       this.points = [0, 0];
       this.gameServer = 1 - this.gameServer;
       if (this.games[w] >= 6 && this.games[w] - this.games[o] >= 2) {
         this.finishSet(w);
-        out2.setWon = true;
-        out2.matchWon = this.winner !== null;
+        out.setWon = true;
+        out.matchWon = this.winner !== null;
       } else if (this.games[0] === 6 && this.games[1] === 6) {
         this.tiebreak = true;
         this.tbFirst = this.gameServer;
       }
     }
-    return out2;
+    return out;
   }
   finishSet(w, tb) {
     this.sets.push({ games: [this.games[0], this.games[1]], tiebreak: tb });
@@ -24522,9 +24522,9 @@ var Match = class {
   callOut(x, y) {
     const dx = Math.abs(x) - COURT.halfWs;
     const dy = Math.abs(y) - COURT.halfL;
-    const out2 = Math.max(dx, dy);
-    this.emit({ type: "out", near: out2 < 0.25 });
-    if (out2 < 0.25) this.emit({ type: "crowd", kind: "gasp", intensity: 0.7 });
+    const out = Math.max(dx, dy);
+    this.emit({ type: "out", near: out < 0.25 });
+    if (out < 0.25) this.emit({ type: "crowd", kind: "gasp", intensity: 0.7 });
   }
   onNet(speed, cord) {
     this.netTouched = true;
@@ -24588,24 +24588,24 @@ var Match = class {
         break;
     }
     if (Math.abs(this.players[winner].y) < 5.5 && (reason === "winner" || reason === "ace")) this.stats.p[winner].netPointsWon++;
-    const out2 = this.score.pointWon(winner);
+    const out = this.score.pointWon(winner);
     this.lastPoint = { winner, reason };
     this.emit({ type: "point", winner, reason, rally: this.rallyHits });
     const names = this.names;
     let text;
     let tmo = this.cfg.fast ? 0.01 : 2.3;
-    if (out2.matchWon) {
+    if (out.matchWon) {
       text = `Joc, set i partit, ${names[winner]}`;
       this.emit({ type: "game", winner });
       this.emit({ type: "set", winner });
       tmo = 3.2;
-    } else if (out2.setWon) {
+    } else if (out.setWon) {
       const last = this.score.sets[this.score.sets.length - 1].games;
       text = `Joc i set, ${names[winner]}, ${last[winner]} a ${last[loser]}`;
       this.emit({ type: "game", winner });
       this.emit({ type: "set", winner });
       tmo = 3.4;
-    } else if (out2.gameWon) {
+    } else if (out.gameWon) {
       text = `Joc, ${names[winner]}. ${this.score.games[0]} a ${this.score.games[1]}`;
       this.emit({ type: "game", winner });
       tmo = 3;
@@ -24614,31 +24614,31 @@ var Match = class {
     }
     this.emit({ type: "announce", text, speak: true });
     const long = this.rallyHits >= 9;
-    const intensity = out2.gameWon ? 0.9 : long ? 0.8 : reason === "ace" ? 0.7 : 0.45;
-    this.emit({ type: "crowd", kind: out2.gameWon || long ? "applause" : "cheer", intensity });
+    const intensity = out.gameWon ? 0.9 : long ? 0.8 : reason === "ace" ? 0.7 : 0.45;
+    this.emit({ type: "crowd", kind: out.gameWon || long ? "applause" : "cheer", intensity });
     if (this.cfg.fast) tmo = 0.01;
     this.timer = tmo;
     this.phase = "point_end";
-    this.matchOverPending = out2.matchWon;
+    this.matchOverPending = out.matchWon;
     this.faultReplay = false;
     for (const p of this.players) p.recover(0.02);
-    this.startEmotes(winner, loser, reason, out2);
+    this.startEmotes(winner, loser, reason, out);
   }
   /** Celebracions i decepcions després del punt (només animació, no afecten el joc). */
-  startEmotes(winner, loser, reason, out2) {
+  startEmotes(winner, loser, reason, out) {
     const w = this.players[winner];
     const l = this.players[loser];
-    if (out2.matchWon) {
+    if (out.matchWon) {
       w.startEmote("win", 99);
       l.startEmote("lose", 99);
       return;
     }
-    if (out2.setWon) {
+    if (out.setWon) {
       w.startEmote("arms", 2.4);
       l.startEmote("shake", 1.6);
       return;
     }
-    if (out2.gameWon) {
+    if (out.gameWon) {
       w.startEmote("fist", 1.6);
       l.startEmote("slump", 1.2);
       return;
@@ -25047,9 +25047,9 @@ function line(ctx, x0, y0, x1, y1, w, color) {
   const sx = ax < bx ? 1 : -1;
   const sy = ay < by ? 1 : -1;
   let err = dx + dy;
-  const off2 = Math.floor((w - 1) / 2);
+  const off = Math.floor((w - 1) / 2);
   for (let i = 0; i < 400; i++) {
-    ctx.fillRect(ax - off2, ay - off2, w, w);
+    ctx.fillRect(ax - off, ay - off, w, w);
     if (ax === bx && ay === by) break;
     const e2 = 2 * err;
     if (e2 >= dy) {
@@ -25232,12 +25232,12 @@ function strokeKeys(stroke, variant, c, st, side) {
       ];
     default: {
       const sg = side;
-      const off2 = sg > 0 ? -0.25 : 0.4;
+      const off = sg > 0 ? -0.25 : 0.4;
       return [
         K(0),
-        K(tb, { hx: 0.5 * sg, hy: 1.22, ang: 1.05 * sg, ox: off2, oy: 1.3, twist: 0.3 * sg, crouch: 0.1, fd: -0.1, ofd: 0.7, grip: 0.2 }),
-        K(c, { hx: 0.55 * sg, hy: 1.2, ang: 0.5 * sg, ox: off2, oy: 1.28, twist: -0.05 * sg, lean: 0.06, crouch: 0.12, shift: 0.06 * sg, fd: 0.8, ofd: 0.7, grip: 0.2 }),
-        K(tf, { hx: 0.42 * sg, hy: 1.15, ang: 0.3 * sg, ox: off2, oy: 1.2, twist: -0.1 * sg, lean: 0.05, crouch: 0.1, fd: 0.8, ofd: 0.7, grip: 0.4 }),
+        K(tb, { hx: 0.5 * sg, hy: 1.22, ang: 1.05 * sg, ox: off, oy: 1.3, twist: 0.3 * sg, crouch: 0.1, fd: -0.1, ofd: 0.7, grip: 0.2 }),
+        K(c, { hx: 0.55 * sg, hy: 1.2, ang: 0.5 * sg, ox: off, oy: 1.28, twist: -0.05 * sg, lean: 0.06, crouch: 0.12, shift: 0.06 * sg, fd: 0.8, ofd: 0.7, grip: 0.2 }),
+        K(tf, { hx: 0.42 * sg, hy: 1.15, ang: 0.3 * sg, ox: off, oy: 1.2, twist: -0.1 * sg, lean: 0.05, crouch: 0.1, fd: 0.8, ofd: 0.7, grip: 0.4 }),
         K(1)
       ];
     }
@@ -25643,28 +25643,28 @@ function drawSittingOfficial(ctx, x, y, s, shirt, arm, front) {
 }
 
 // src/render/finish.ts
-var off = null;
-var offCtx = null;
-var out = null;
-var outCtx = null;
-function ensure(w, h) {
-  if (!off) {
-    off = document.createElement("canvas");
-    out = document.createElement("canvas");
+var pool = /* @__PURE__ */ new WeakMap();
+function buffers(key, w, h) {
+  let b = pool.get(key);
+  if (!b) {
+    const off = document.createElement("canvas");
+    b = { off, g: null, img: null };
+    pool.set(key, b);
   }
-  if (off.width !== w || off.height !== h) {
-    off.width = out.width = w;
-    off.height = out.height = h;
-    offCtx = off.getContext("2d", { willReadFrequently: true });
-    outCtx = out.getContext("2d");
+  if (b.off.width !== w || b.off.height !== h || !b.g) {
+    b.off.width = w;
+    b.off.height = h;
+    b.g = b.off.getContext("2d", { willReadFrequently: true });
+    b.img = null;
   }
+  return b;
 }
 var clamp8 = (v) => v < 0 ? 0 : v > 255 ? 255 : v | 0;
 function drawPlayerFinished(ctx, d) {
   const w = Math.ceil(3.4 * d.s) + 12;
   const h = Math.ceil(3.8 * d.s) + 12;
-  ensure(w, h);
-  const g = offCtx;
+  const b = buffers(d.look, w, h);
+  const g = b.g;
   g.clearRect(0, 0, w, h);
   g.imageSmoothingEnabled = false;
   const ax = Math.round(w / 2);
@@ -25672,8 +25672,9 @@ function drawPlayerFinished(ctx, d) {
   const rk = drawPlayerSprite(g, { ...d, x: ax, y: ay });
   const src = g.getImageData(0, 0, w, h);
   const s = src.data;
-  const dst = new ImageData(w, h);
+  const dst = b.img ??= new ImageData(w, h);
   const o = dst.data;
+  o.fill(0);
   const A = (x, y) => x >= 0 && y >= 0 && x < w && y < h && s[(y * w + x) * 4 + 3] > 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -25706,10 +25707,30 @@ function drawPlayerFinished(ctx, d) {
       }
     }
   }
-  outCtx.putImageData(dst, 0, 0);
   const bx = Math.round(d.x) - ax;
   const by = Math.round(d.y) - ay;
-  ctx.drawImage(out, bx, by);
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
+      const i = (y * w + x) * 4;
+      if (o[i + 3] === 0) {
+        x++;
+        continue;
+      }
+      const r = o[i];
+      const gg = o[i + 1];
+      const bb = o[i + 2];
+      let x2 = x + 1;
+      while (x2 < w) {
+        const j = (y * w + x2) * 4;
+        if (o[j + 3] === 0 || o[j] !== r || o[j + 1] !== gg || o[j + 2] !== bb) break;
+        x2++;
+      }
+      ctx.fillStyle = `rgb(${r},${gg},${bb})`;
+      ctx.fillRect(bx + x, by + y, x2 - x, 1);
+      x = x2;
+    }
+  }
   return { racketX: bx + rk.x, racketY: by + rk.y };
 }
 
@@ -25780,26 +25801,26 @@ function drawTrophy(ctx, x, y, k, t) {
   const gold = "#f5c518";
   const light = "#fff08a";
   const dark2 = "#b8860b";
-  const out2 = "#5a3d00";
+  const out = "#5a3d00";
   const r = (rx, ry, w, h, c) => {
     ctx.fillStyle = c;
     ctx.fillRect(Math.round(x + rx * k), Math.round(y + ry * k), Math.round(w * k), Math.round(h * k));
   };
   for (const sg of [-1, 1]) {
     const bx = sg < 0 ? -9 : 8;
-    r(bx - 1, 1, 3, 1, out2);
-    r(bx - 1, 5, 3, 1, out2);
-    r(bx + (sg < 0 ? -1 : 1), 2, 1, 3, out2);
+    r(bx - 1, 1, 3, 1, out);
+    r(bx - 1, 5, 3, 1, out);
+    r(bx + (sg < 0 ? -1 : 1), 2, 1, 3, out);
     r(bx, 2, 1, 3, gold);
   }
   CUP_ROWS.forEach((w, i) => {
     const x0 = -w / 2;
-    r(x0 - 1, i, w + 2, 1, out2);
+    r(x0 - 1, i, w + 2, 1, out);
     r(x0, i, w, 1, gold);
     r(x0 + 1, i, 2, 1, light);
     r(x0 + w - 3, i, 3, 1, dark2);
   });
-  r(-4, 10, 8, 1, out2);
+  r(-4, 10, 8, 1, out);
   r(-1, 3, 2, 4, "#ffffff");
   r(-2, 4, 4, 2, "#ffffff");
   r(-2, 10, 4, 4, gold);
@@ -25808,7 +25829,7 @@ function drawTrophy(ctx, x, y, k, t) {
   r(-4, 14, 8, 2, gold);
   r(-6, 16, 12, 2, dark2);
   r(-7, 18, 14, 3, gold);
-  r(-7, 20, 14, 1, out2);
+  r(-7, 20, 14, 1, out);
   r(-3, 18, 6, 2, "#2a6cd0");
   if (Math.floor(t * 6) % 4 === 0) {
     r(5, 1, 1, 3, "#ffffff");
@@ -26068,17 +26089,17 @@ var CAM = {
 };
 var S = Math.sin(CAM.pitch);
 var C = Math.cos(CAM.pitch);
-function project(x, y, z, out2) {
+function project(x, y, z, out) {
   const ry = y - CAM.y;
   const rz = z - CAM.z;
   const fwd = -ry * C - rz * S;
   const up = -ry * S + rz * C;
   const k = CAM.f / fwd;
-  out2.sx = CAM.cx + x * k;
-  out2.sy = CAM.cy - up * k;
-  out2.ppm = k;
-  out2.depth = fwd;
-  return out2;
+  out.sx = CAM.cx + x * k;
+  out.sy = CAM.cy - up * k;
+  out.ppm = k;
+  out.depth = fwd;
+  return out;
 }
 var newProj = () => ({ sx: 0, sy: 0, ppm: 1, depth: 1 });
 function rayDir(sx, sy) {
@@ -27633,7 +27654,7 @@ var STATS = [
 function Card2({ def, side, scale, stats }) {
   const color = side === "l" ? "#8cc0ff" : "#ff9a8c";
   return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `vs-card vs-${side}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-portrait", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(SpritePreview, { def, s: 46, width: 84, height: 112, scale }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-portrait", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(SpritePreview, { def, s: 46, width: 84, height: 112, scale }, def.id) }),
     /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.name.toUpperCase(), scale: scale >= 3 ? 3 : scale === 2 ? 2 : 1, color: "#ffffff" }),
     /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PixelText, { text: def.style.label.toUpperCase(), scale: 1, color }),
     stats ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "vs-stats", children: STATS.map(([label, k]) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "vs-stat", children: [

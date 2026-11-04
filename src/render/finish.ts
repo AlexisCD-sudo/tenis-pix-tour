@@ -7,22 +7,32 @@ import { DrawSpec, drawPlayerSprite } from './sprites';
  * llum/ombra a les vores (llum des de dalt a l'esquerra), cosa que dona volum
  * i separa les parts (braços, tors, cap) com als sprites de 16 bits.
  */
-let off: HTMLCanvasElement | null = null;
-let offCtx: CanvasRenderingContext2D | null = null;
-let out: HTMLCanvasElement | null = null;
-let outCtx: CanvasRenderingContext2D | null = null;
+/**
+ * Cada personatge té els seus propis llenços auxiliars: compartir-los entre jugadors feia que,
+ * en alguns navegadors (Safari/iOS, que ajorna les còpies de llenç a llenç), els dos retrats
+ * de la presentació acabessin mostrant el mateix sprite.
+ */
+interface Buffers {
+  off: HTMLCanvasElement;
+  g: CanvasRenderingContext2D;
+  img: ImageData | null;
+}
+const pool = new WeakMap<object, Buffers>();
 
-function ensure(w: number, h: number): void {
-  if (!off) {
-    off = document.createElement('canvas');
-    out = document.createElement('canvas');
+function buffers(key: object, w: number, h: number): Buffers {
+  let b = pool.get(key);
+  if (!b) {
+    const off = document.createElement('canvas');
+    b = { off, g: null as unknown as CanvasRenderingContext2D, img: null };
+    pool.set(key, b);
   }
-  if (off.width !== w || off.height !== h) {
-    off.width = out!.width = w;
-    off.height = out!.height = h;
-    offCtx = off.getContext('2d', { willReadFrequently: true })!;
-    outCtx = out!.getContext('2d')!;
+  if (b.off.width !== w || b.off.height !== h || !b.g) {
+    b.off.width = w;
+    b.off.height = h;
+    b.g = b.off.getContext('2d', { willReadFrequently: true })!;
+    b.img = null;
   }
+  return b;
 }
 
 export interface Finished {
@@ -36,8 +46,9 @@ const clamp8 = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
 export function drawPlayerFinished(ctx: Ctx, d: DrawSpec): Finished {
   const w = Math.ceil(3.4 * d.s) + 12;
   const h = Math.ceil(3.8 * d.s) + 12;
-  ensure(w, h);
-  const g = offCtx!;
+  // Una clau per personatge (i per mida): el cos i els colors són l'identificador
+  const b = buffers(d.look, w, h);
+  const g = b.g;
   g.clearRect(0, 0, w, h);
   g.imageSmoothingEnabled = false;
   const ax = Math.round(w / 2);
@@ -46,8 +57,9 @@ export function drawPlayerFinished(ctx: Ctx, d: DrawSpec): Finished {
 
   const src = g.getImageData(0, 0, w, h);
   const s = src.data;
-  const dst = new ImageData(w, h);
+  const dst = (b.img ??= new ImageData(w, h));
   const o = dst.data;
+  o.fill(0);
   const A = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && s[(y * w + x) * 4 + 3] > 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -81,9 +93,31 @@ export function drawPlayerFinished(ctx: Ctx, d: DrawSpec): Finished {
       }
     }
   }
-  outCtx!.putImageData(dst, 0, 0);
+  // Es pinta directament al destí amb franges horitzontals del mateix color: no depèn de
+  // copiar un llenç a un altre (que a Safari/iOS podia mostrar el sprite d'un altre jugador).
   const bx = Math.round(d.x) - ax;
   const by = Math.round(d.y) - ay;
-  ctx.drawImage(out!, bx, by);
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
+      const i = (y * w + x) * 4;
+      if (o[i + 3] === 0) {
+        x++;
+        continue;
+      }
+      const r = o[i];
+      const gg = o[i + 1];
+      const bb = o[i + 2];
+      let x2 = x + 1;
+      while (x2 < w) {
+        const j = (y * w + x2) * 4;
+        if (o[j + 3] === 0 || o[j] !== r || o[j + 1] !== gg || o[j + 2] !== bb) break;
+        x2++;
+      }
+      ctx.fillStyle = `rgb(${r},${gg},${bb})`;
+      ctx.fillRect(bx + x, by + y, x2 - x, 1);
+      x = x2;
+    }
+  }
   return { racketX: bx + rk.x, racketY: by + rk.y };
 }
