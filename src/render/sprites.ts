@@ -225,16 +225,19 @@ export function poseFor(p: Player, time: number, tossBallZ: number | null): Pose
   if (mv) {
     const s = Math.sin(phase);
     const run = clamp(vr * 1.3, 0, 1);
+    // En córrer els dos braços es dibuixen davant del tors (capa visible) i la mà lliure
+    // queda al costat del cos, mai creuada per sobre, perquè mai sembli transparent.
+    const vis = p.side > 0 ? -0.3 : 0.3;
     base = K(0, {
-      hx: 0.34 + 0.05 * Math.cos(phase),
-      hy: 1.0 - 0.05 * s * run,
+      hx: 0.38 + 0.04 * Math.cos(phase),
+      hy: 0.98 - 0.05 * s * run,
       ang: 0.9 - 0.15 * s * run,
-      ox: -0.18 - 0.08 * s * run,
-      oy: 1.0 + 0.24 * s * run,
+      ox: -0.42 - 0.05 * s * run,
+      oy: 0.95 + 0.2 * s * run,
       lean: 0.09 * vr,
       crouch: 0.07 + 0.07 * vr,
-      fd: 1,
-      ofd: s * run,
+      fd: vis,
+      ofd: vis,
       grip: clamp(1 - run * 1.6, 0, 1),
     });
   } else {
