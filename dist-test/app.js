@@ -25281,12 +25281,12 @@ function poseFor(p, time, tossBallZ) {
   if (mv) {
     const s = Math.sin(phase);
     const run = clamp(vr * 1.3, 0, 1);
-    const vis = p.side > 0 ? -0.3 : 0.3;
+    const vis = 0.3;
     base = K(0, {
-      hx: 0.38 + 0.04 * Math.cos(phase),
+      hx: 0.46 + 0.04 * Math.cos(phase),
       hy: 0.98 - 0.05 * s * run,
       ang: 0.9 - 0.15 * s * run,
-      ox: -0.42 - 0.05 * s * run,
+      ox: -0.5 - 0.05 * s * run,
       oy: 0.95 + 0.2 * s * run,
       lean: 0.09 * vr,
       crouch: 0.07 + 0.07 * vr,
