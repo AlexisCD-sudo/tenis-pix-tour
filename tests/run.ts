@@ -1,3 +1,4 @@
+import { resolveKits, kitsClash } from '../src/players/kit';
 import assert from 'node:assert/strict';
 import { MatchScore } from '../src/scoring/score';
 import { BALL, DT } from '../src/engine/constants';
@@ -190,6 +191,20 @@ test('timing: els cops tenen valoració i un cop perfecte omple el medidor', () 
   }
   assert.ok(seen.has('perfect') && seen.has('nice'), [...seen].join());
   assert.ok(m.meter[0] >= 0 && m.meter[0] <= 1 && m.meter[1] >= 0 && m.meter[1] <= 1);
+});
+
+test('equipacions: si dos jugadors vesteixen igual, el segon es posa la segona equipació', () => {
+  const byId = (id: string) => ROSTER.find((p) => p.id === id)!;
+  const [a, b] = resolveKits(byId('djokobits'), byId('fedepixel'));
+  assert.equal(a.look.shirt, byId('djokobits').look.shirt);
+  assert.notEqual(b.look.shirt, byId('fedepixel').look.shirt);
+  assert.equal(b.id, 'fedepixel');
+  // i cap parella del repartiment acaba amb samarretes que es confonguin
+  for (const x of ROSTER) for (const y of ROSTER) {
+    if (x.id === y.id) continue;
+    const [h, v] = resolveKits(x, y);
+    assert.equal(kitsClash(h, v), false, `${x.id} vs ${y.id}`);
+  }
 });
 
 // ------------------------------------------------------------------ física

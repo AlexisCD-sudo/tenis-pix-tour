@@ -23093,7 +23093,7 @@ function planShot(ox, oy, oz, tx, ty, spec) {
   const D = Math.max(1, Math.hypot(dx, dy));
   const hx = dx / D;
   const hy = dy / D;
-  const dist = (theta, v2) => {
+  const dist2 = (theta, v2) => {
     const l = simulateToBounce(launch(ox, oy, oz, hx, hy, theta, v2, spec.spinTop, spec.spinSide));
     return { ...l, d: (l.x - ox) * hx + (l.y - oy) * hy };
   };
@@ -23120,22 +23120,22 @@ function planShot(ox, oy, oz, tx, ty, spec) {
     let hi = 40;
     for (let i = 0; i < 18; i++) {
       const mid = (lo + hi) / 2;
-      if (dist(th, mid).d < D) lo = mid;
+      if (dist2(th, mid).d < D) lo = mid;
       else hi = mid;
     }
     const v2 = (lo + hi) / 2;
-    const l = dist(th, v2);
+    const l = dist2(th, v2);
     return build(th, v2, l, l.clearance > spec.minClear);
   }
   let v = spec.speed;
   let best = null;
   for (let attempt = 0; attempt < 12; attempt++) {
-    const lo0 = dist(spec.thetaLo, v);
+    const lo0 = dist2(spec.thetaLo, v);
     if (lo0.d > D && attempt < 11) {
       v *= 0.93;
       continue;
     }
-    const hi0 = dist(spec.thetaHi, v);
+    const hi0 = dist2(spec.thetaHi, v);
     if (hi0.d < D) {
       return build(spec.thetaHi, v, hi0, false);
     }
@@ -23143,11 +23143,11 @@ function planShot(ox, oy, oz, tx, ty, spec) {
     let hi = spec.thetaHi;
     for (let i = 0; i < 16; i++) {
       const mid = (lo + hi) / 2;
-      if (dist(mid, v).d < D) lo = mid;
+      if (dist2(mid, v).d < D) lo = mid;
       else hi = mid;
     }
     const th = (lo + hi) / 2;
-    const l = dist(th, v);
+    const l = dist2(th, v);
     const plan = build(th, v, l, l.clearance >= spec.minClear);
     if (plan.ok) return plan;
     best = plan;
@@ -23653,8 +23653,8 @@ var AIController = class {
       const smash = pre && s.z >= 2.3 && s.z < 3 && Math.abs(sy) < 9 && !m.serveAwait;
       if (!zOk && !smash) continue;
       const c = idealContact(p, this.strokeFor(p, sx));
-      const dist = Math.hypot(sx - p.x - (c.x - p.x), sy - p.y - (c.y - p.y));
-      const need = Math.max(0, dist - 0.6) / vmax + lead;
+      const dist2 = Math.hypot(sx - p.x - (c.x - p.x), sy - p.y - (c.y - p.y));
+      const need = Math.max(0, dist2 - 0.6) / vmax + lead;
       const avail = s.t - react;
       const tgt = { x: sx, y: sy, t: s.t, z: s.z, sample: { ...s, x: sx, y: sy }, reachable: avail >= need, volley: pre };
       if (tgt.reachable) {
@@ -25281,12 +25281,12 @@ function poseFor(p, time, tossBallZ) {
   if (mv) {
     const s = Math.sin(phase);
     const run = clamp(vr * 1.3, 0, 1);
-    const vis = 0.3;
+    const vis = p.side > 0 ? -0.3 : 0.3;
     base = K(0, {
-      hx: 0.46 + 0.04 * Math.cos(phase),
+      hx: 0.5 + 0.04 * Math.cos(phase),
       hy: 0.98 - 0.05 * s * run,
       ang: 0.9 - 0.15 * s * run,
-      ox: -0.5 - 0.05 * s * run,
+      ox: -0.52 - 0.04 * s * run,
       oy: 0.95 + 0.2 * s * run,
       lean: 0.09 * vr,
       crouch: 0.07 + 0.07 * vr,
@@ -25779,7 +25779,7 @@ var CUP_ROWS = [14, 14, 14, 13, 13, 12, 11, 10, 9, 8];
 function drawTrophy(ctx, x, y, k, t) {
   const gold = "#f5c518";
   const light = "#fff08a";
-  const dark = "#b8860b";
+  const dark2 = "#b8860b";
   const out2 = "#5a3d00";
   const r = (rx, ry, w, h, c) => {
     ctx.fillStyle = c;
@@ -25797,16 +25797,16 @@ function drawTrophy(ctx, x, y, k, t) {
     r(x0 - 1, i, w + 2, 1, out2);
     r(x0, i, w, 1, gold);
     r(x0 + 1, i, 2, 1, light);
-    r(x0 + w - 3, i, 3, 1, dark);
+    r(x0 + w - 3, i, 3, 1, dark2);
   });
   r(-4, 10, 8, 1, out2);
   r(-1, 3, 2, 4, "#ffffff");
   r(-2, 4, 4, 2, "#ffffff");
   r(-2, 10, 4, 4, gold);
   r(-2, 10, 1, 4, light);
-  r(1, 10, 1, 4, dark);
+  r(1, 10, 1, 4, dark2);
   r(-4, 14, 8, 2, gold);
-  r(-6, 16, 12, 2, dark);
+  r(-6, 16, 12, 2, dark2);
   r(-7, 18, 14, 3, gold);
   r(-7, 20, 14, 1, out2);
   r(-3, 18, 6, 2, "#2a6cd0");
@@ -26196,7 +26196,7 @@ function buildBackground() {
           }
         }
       }
-      let rgb;
+      let rgb2;
       const wx = bestT === Infinity ? 0 : bestT * d.dx;
       const wy = bestT === Infinity ? 0 : CAM.y + bestT * d.dy;
       const wz = bestT === Infinity ? 0 : CAM.z + bestT * d.dz;
@@ -26211,15 +26211,15 @@ function buildBackground() {
           const inside = ax <= COURT.halfWd && ay <= COURT.halfL;
           const light = 1 - 0.28 * Math.min(1, (wx / 16) ** 2 + (wy / 24) ** 2);
           if (lineHit(wx, wy, hwx, hwy)) {
-            rgb = [240, 244, 248];
-            rgb = shadeRgb(rgb, 0.92 + 0.08 * light);
+            rgb2 = [240, 244, 248];
+            rgb2 = shadeRgb(rgb2, 0.92 + 0.08 * light);
           } else {
             const cols = inside ? innerRgb : outerRgb;
             const n = hash(Math.floor(wx * 1.2), Math.floor(wy * 1.2));
             const base = cols[n > 0.6 ? 1 : 0];
             const gr = hash(sx * 7 + 3, sy * 13 + 5);
             const q = light + (bayer - 0.5) * 0.1;
-            rgb = shadeRgb(base, (q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76) * (gr > 0.93 ? 0.93 : gr < 0.05 ? 1.05 : 1));
+            rgb2 = shadeRgb(base, (q > 0.88 ? 1.04 : q > 0.78 ? 0.95 : q > 0.68 ? 0.86 : 0.76) * (gr > 0.93 ? 0.93 : gr < 0.05 ? 1.05 : 1));
           }
           break;
         }
@@ -26236,7 +26236,7 @@ function buildBackground() {
             const ty = Math.floor((0.88 - zi) / 0.68 * 5);
             if (tx >= 0 && tx < sp.w && ty >= 0 && ty < 5 && sp.bits[ty * sp.w + tx]) c = sp.fg;
           }
-          rgb = shadeRgb(c, 0.95 + (bayer - 0.5) * 0.06);
+          rgb2 = shadeRgb(c, 0.95 + (bayer - 0.5) * 0.06);
           break;
         }
         case "far": {
@@ -26249,7 +26249,7 @@ function buildBackground() {
           else if (frac < 0.3) c = shadeRgb(c, 0.7);
           if (Math.floor((wx + 60) / 3) % 5 === 0 && Math.abs((wx + 60) % 3 - 0) < 0.12) c = [110, 110, 125];
           const dim = 1 - Math.min(0.55, row * 0.045);
-          rgb = shadeRgb(c, dim * (0.92 + (bayer - 0.5) * 0.1));
+          rgb2 = shadeRgb(c, dim * (0.92 + (bayer - 0.5) * 0.1));
           void col;
           break;
         }
@@ -26263,18 +26263,18 @@ function buildBackground() {
           if (frac < 0.12) c = [150, 150, 165];
           else if (frac < 0.3) c = shadeRgb(c, 0.7);
           const dim = 1 - Math.min(0.55, row * 0.045);
-          rgb = shadeRgb(c, dim * 0.85 * (0.92 + (bayer - 0.5) * 0.1));
+          rgb2 = shadeRgb(c, dim * 0.85 * (0.92 + (bayer - 0.5) * 0.1));
           break;
         }
         default: {
           const g = 1 - sy / 90;
-          rgb = shadeRgb([14, 20, 52], 0.7 + 0.6 * Math.max(0, g) + (bayer - 0.5) * 0.12);
+          rgb2 = shadeRgb([14, 20, 52], 0.7 + 0.6 * Math.max(0, g) + (bayer - 0.5) * 0.12);
         }
       }
       const i = (sy * W + sx) * 4;
-      data[i] = rgb[0];
-      data[i + 1] = rgb[1];
-      data[i + 2] = rgb[2];
+      data[i] = rgb2[0];
+      data[i + 1] = rgb2[1];
+      data[i + 2] = rgb2[2];
       data[i + 3] = 255;
     }
   }
@@ -27225,6 +27225,40 @@ var GameRunner = class {
   }
 };
 
+// src/players/kit.ts
+var rgb = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [n >> 16 & 255, n >> 8 & 255, n & 255];
+};
+var dist = (a, b) => {
+  const x = rgb(a);
+  const y = rgb(b);
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+};
+var dark = (hex, f) => {
+  const [r, g, b] = rgb(hex);
+  return `#${(1 << 24 | Math.round(r * f) << 16 | Math.round(g * f) << 8 | Math.round(b * f)).toString(16).slice(1)}`;
+};
+function kitsClash(a, b) {
+  return dist(a.look.shirt, b.look.shirt) < 120;
+}
+function resolveKits(home, away) {
+  if (!kitsClash(home, away)) return [home, away];
+  const l = away.look;
+  const shirt = dist(l.shirtTrim, home.look.shirt) >= 120 ? l.shirtTrim : dark(l.shirt, 0.3);
+  const alt = {
+    ...away,
+    look: {
+      ...l,
+      shirt,
+      shirtTrim: l.shirt,
+      shorts: dist(shirt, l.shorts) < 60 ? dark(shirt, 0.55) : l.shorts,
+      shortsTrim: l.shirt
+    }
+  };
+  return [home, alt];
+}
+
 // src/ui/Hud.tsx
 var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
 function Hud({ hud, ps, onPause }) {
@@ -27677,13 +27711,15 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
   const [hint, setHint] = (0, import_react9.useState)(false);
   const [vs, setVs] = (0, import_react9.useState)(!attract);
   const vsRef = (0, import_react9.useRef)(!attract);
+  const kits = resolveKits(setup.p0, setup.p1);
   const touch = !attract && (settings.touch === "on" || settings.touch === "auto" && vp.coarse);
   (0, import_react9.useEffect)(() => {
     const input = inputRef.current;
     const human = setup.humanIdx === 0 ? new HumanController(input) : null;
     const controllers = [human ?? new AIController(setup.seed + 1), new AIController(setup.seed + 2)];
+    const [kit0, kit1] = resolveKits(setup.p0, setup.p1);
     const match = new Match(
-      { p0: setup.p0, p1: setup.p1, humanIdx: setup.humanIdx, difficulty, seed: setup.seed, firstServer: setup.firstServer },
+      { p0: kit0, p1: kit1, humanIdx: setup.humanIdx, difficulty, seed: setup.seed, firstServer: setup.firstServer },
       controllers
     );
     const runner = new GameRunner(canvasRef.current, match, human ? input : null, human, {
@@ -27736,7 +27772,7 @@ function MatchScreen({ setup, difficulty, settings, roundLabel, attract = false,
       /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("canvas", { ref: canvasRef, className: "game-canvas" }),
       !attract && hud ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Hud, { hud, ps: vp.portrait ? Math.min(vp.ps, 1) : vp.ps === 3 ? 2 : vp.ps, onPause: togglePause }) : null,
       !attract ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "round-tag", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: roundLabel, scale: 1, color: "#9fb4e8" }) }) : null,
-      vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VsIntro, { a: setup.p0, b: setup.p1, roundLabel, onDone: endVs }) : null,
+      vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VsIntro, { a: kits[0], b: kits[1], roundLabel, onDone: endVs }) : null,
       hint && !attract && !paused && !vs ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "hint", children: touch ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "JOYSTICK: MOURE I APUNTAR", scale: 1, color: "#ffffff" }),
         /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PixelText, { text: "COP: PREM AL MOMENT EXACTE \xB7 EFECTE: SLICE", scale: 1, color: "#ffe066" })

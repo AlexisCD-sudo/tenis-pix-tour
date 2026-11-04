@@ -225,14 +225,14 @@ export function poseFor(p: Player, time: number, tossBallZ: number | null): Pose
   if (mv) {
     const s = Math.sin(phase);
     const run = clamp(vr * 1.3, 0, 1);
-    // En córrer, de cara els braços es veuen davant del tors; d'esquena queden darrere (només
-    // es veu l'avantbraç i la mà als costats), com en realitat: mai superposats al tors.
-    const vis = 0.3;
+    // En córrer els braços pengen als costats, separats del tors i sempre a la capa de davant
+    // (així es veuen sencers: espatlla, colze i mà), sense creuar-se per sobre del cos.
+    const vis = p.side > 0 ? -0.3 : 0.3;
     base = K(0, {
-      hx: 0.46 + 0.04 * Math.cos(phase),
+      hx: 0.5 + 0.04 * Math.cos(phase),
       hy: 0.98 - 0.05 * s * run,
       ang: 0.9 - 0.15 * s * run,
-      ox: -0.5 - 0.05 * s * run,
+      ox: -0.52 - 0.04 * s * run,
       oy: 0.95 + 0.2 * s * run,
       lean: 0.09 * vr,
       crouch: 0.07 + 0.07 * vr,

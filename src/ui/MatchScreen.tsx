@@ -6,6 +6,7 @@ import { HumanController, InputManager } from '../controls/input';
 import { Match } from '../game/match';
 import { GameRunner, HudState } from '../game/runner';
 import { Settings } from '../game/storage';
+import { resolveKits } from '../players/kit';
 import { PlayerDef } from '../players/roster';
 import { Hud } from './Hud';
 import { PauseMenu } from './PauseMenu';
@@ -45,14 +46,17 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
   // Presentació VS abans del partit (no en mode demostració)
   const [vs, setVs] = useState(!attract);
   const vsRef = useRef(!attract);
+  const kits = resolveKits(setup.p0, setup.p1);
   const touch = !attract && (settings.touch === 'on' || (settings.touch === 'auto' && vp.coarse));
 
   useEffect(() => {
     const input = inputRef.current;
     const human = setup.humanIdx === 0 ? new HumanController(input) : null;
     const controllers = [human ?? new AIController(setup.seed + 1), new AIController(setup.seed + 2)] as [HumanController | AIController, AIController];
+    // Si tots dos van del mateix color, el segon es posa la segona equipació
+    const [kit0, kit1] = resolveKits(setup.p0, setup.p1);
     const match = new Match(
-      { p0: setup.p0, p1: setup.p1, humanIdx: setup.humanIdx, difficulty, seed: setup.seed, firstServer: setup.firstServer },
+      { p0: kit0, p1: kit1, humanIdx: setup.humanIdx, difficulty, seed: setup.seed, firstServer: setup.firstServer },
       controllers,
     );
     const runner = new GameRunner(canvasRef.current!, match, human ? input : null, human, {
@@ -119,7 +123,7 @@ export function MatchScreen({ setup, difficulty, settings, roundLabel, attract =
           </div>
         ) : null}
         {vs ? (
-          <VsIntro a={setup.p0} b={setup.p1} roundLabel={roundLabel} onDone={endVs} />
+          <VsIntro a={kits[0]} b={kits[1]} roundLabel={roundLabel} onDone={endVs} />
         ) : null}
         {hint && !attract && !paused && !vs ? (
           <div className="hint">
